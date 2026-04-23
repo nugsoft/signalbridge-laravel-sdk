@@ -3,49 +3,42 @@
 namespace Nugsoft\SignalBridge;
 
 use Illuminate\Support\ServiceProvider;
+use Nugsoft\SignalBridge\Contracts\SignalBridgeClientInterface;
 
 class SignalBridgeServiceProvider extends ServiceProvider
 {
-  /**
-   * Bootstrap any application services.
-   */
-  public function boot(): void
-  {
-    // Publish configuration file
-    $this->publishes([
-      __DIR__ . '/../config/signalbridge.php' => config_path('signalbridge.php'),
-    ], 'signalbridge-config');
-  }
+    public function boot(): void
+    {
+        $this->publishes([
+            __DIR__ . '/../config/signalbridge.php' => config_path('signalbridge.php'),
+        ], 'signalbridge-config');
 
-  /**
-   * Register any application services.
-   */
-  public function register(): void
-  {
-    // Merge package config with app config
-    $this->mergeConfigFrom(
-      __DIR__ . '/../config/signalbridge.php',
-      'signalbridge'
-    );
+        if ($this->app->runningInConsole() && empty(config('signalbridge.token'))) {
+            $this->app->make('log')->warning('SignalBridge: SIGNALBRIDGE_TOKEN is not set. The SDK will throw on first use.');
+        }
+    }
 
-    // Register the main class to use with the facade
-    $this->app->singleton('signalbridge', function ($app) {
-      return new SignalBridgeClient(
-        config('signalbridge.token'),
-        config('signalbridge.url'),
-        config('signalbridge.timeout', 30)
-      );
-    });
+    public function register(): void
+    {
+        $this->mergeConfigFrom(
+            __DIR__ . '/../config/signalbridge.php',
+            'signalbridge'
+        );
 
-    // Alias for dependency injection
-    $this->app->alias('signalbridge', SignalBridgeClient::class);
-  }
+        $this->app->singleton('signalbridge', function ($app) {
+            return new SignalBridgeClient(
+                config('signalbridge.token'),
+                config('signalbridge.url'),
+                (int) config('signalbridge.timeout', 30)
+            );
+        });
 
-  /**
-   * Get the services provided by the provider.
-   */
-  public function provides(): array
-  {
-    return ['signalbridge', SignalBridgeClient::class];
-  }
+        $this->app->alias('signalbridge', SignalBridgeClient::class);
+        $this->app->alias('signalbridge', SignalBridgeClientInterface::class);
+    }
+
+    public function provides(): array
+    {
+        return ['signalbridge', SignalBridgeClient::class, SignalBridgeClientInterface::class];
+    }
 }
