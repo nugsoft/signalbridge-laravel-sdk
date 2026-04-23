@@ -6,25 +6,24 @@ return [
     | SignalBridge API URL
     |--------------------------------------------------------------------------
     |
-    | The base URL for the SignalBridge API. For production, use:
-    | https://signal-bridge.nugsoftstagging.com/api
+    | The base URL for the SignalBridge API.
     |
-    | For local development, use:
-    | http://localhost:8000/api
+    | WARNING: The default value below is the staging/development server.
+    | Always set SIGNALBRIDGE_URL explicitly in production.
     |
     */
 
-  'url' => env('SIGNALBRIDGE_URL', 'https://signal-bridge.nugsoftstagging.com/api'),
+  'url' => env('SIGNALBRIDGE_URL', 'https://signal-bridge.nugsoftapps.net/api'),
 
   /*
     |--------------------------------------------------------------------------
     | SignalBridge API Token
     |--------------------------------------------------------------------------
     |
-    | Your SignalBridge API authentication token. You can generate this
-    | from the SignalBridge dashboard or via the API token creation endpoint.
+    | Your SignalBridge API authentication token. Generate this from the
+    | SignalBridge dashboard or via the API token creation endpoint.
     |
-    | IMPORTANT: Keep this token secure and never commit it to version control.
+    | IMPORTANT: Never commit this value to version control.
     |
     */
 
@@ -35,8 +34,8 @@ return [
     | Default Request Timeout
     |--------------------------------------------------------------------------
     |
-    | The default timeout (in seconds) for API requests. Batch operations
-    | automatically use a longer timeout (60 seconds).
+    | Timeout in seconds for all API requests, including batch operations.
+    | Increase this value if you are sending very large batches.
     |
     */
 
@@ -47,22 +46,22 @@ return [
     | Default Sender ID
     |--------------------------------------------------------------------------
     |
-    | The default sender ID to use when sending SMS messages. This can be
-    | overridden per message by passing a 'sender_id' in the options array.
-    |
-    | Maximum 11 characters. Must be registered with your SMS vendor.
+    | Sender ID shown to recipients. Maximum 11 characters.
+    | Must be registered with your SMS vendor.
+    | Can be overridden per message via the 'sender_id' option.
     |
     */
 
-  'default_sender_id' => env('SIGNALBRIDGE_SENDER_ID', config('app.name')),
+  'default_sender_id' => env('SIGNALBRIDGE_SENDER_ID'),
 
   /*
     |--------------------------------------------------------------------------
     | Logging
     |--------------------------------------------------------------------------
     |
-    | Enable or disable logging of API errors. When enabled, all API errors
-    | will be logged to your application's log file.
+    | When enabled, API errors are logged to your application log.
+    | Only the HTTP status, error message, and error code are logged —
+    | message content and recipient numbers are never written to logs.
     |
     */
 
