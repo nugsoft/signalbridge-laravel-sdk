@@ -3,479 +3,500 @@
 [![Latest Version on Packagist](https://img.shields.io/packagist/v/nugsoft/signalbridge-laravel-sdk.svg?style=flat-square)](https://packagist.org/packages/nugsoft/signalbridge-laravel-sdk)
 [![Total Downloads](https://img.shields.io/packagist/dt/nugsoft/signalbridge-laravel-sdk.svg?style=flat-square)](https://packagist.org/packages/nugsoft/signalbridge-laravel-sdk)
 
-Laravel SDK for SignalBridge SMS Gateway - Send SMS messages through multiple vendors (SpeedaMobile, Africa's Talking) with a unified API. Built specifically for Nugsoft product/project teams.
+Official Laravel SDK for [SignalBridge](https://signal-bridge.nugsoftapps.net) — a unified multi-channel communication and payment gateway.
+
+Send SMS, WhatsApp messages, and initiate Mobile Money transactions through a single, clean Laravel API. Built by Nugsoft.
+
+## Channels
+
+| Channel | Status | Methods |
+|---|---|---|
+| **SMS** | ✅ Available | `send()`, `sendBatch()`, `calculateSegments()`, `estimateCost()` |
+| **WhatsApp** | ✅ Available | `send()`, `sendTemplate()` |
+| **Mobile Money** | ✅ Available | `initiate()`, `verify()`, `disburse()` |
+| **USSD** | 🔜 Planned | `push()`, `session()`, `respond()` |
 
 ## Features
 
-- **Simple API** - Clean, Laravel-style interface
-- **Balance Management** - Check balance, view transactions, get usage reports
-- **Scheduled Messages** - Schedule SMS for future delivery
-- **Segment Calculation** - Automatic cost estimation (GSM 7-bit vs Unicode)
-- **Custom Exceptions** - Typed exceptions for better error handling
-- **Facade Support** - Use `SignalBridge::sendSms()` syntax
-- **Dependency Injection** - Constructor injection support
-- **Laravel 10, 11, 12** - Compatible with modern Laravel versions
-- **PHP 8.1+** - Modern PHP features
-- **Queue** - Supports message queueing for reliable delivery with retry logic and monitoring via Laravel's queue system
+- **Multi-channel API** — SMS, WhatsApp, Mobile Money, and USSD (planned) through one SDK
+- **Channel-fluent interface** — `SignalBridge::sms()->send(...)`, `SignalBridge::whatsapp()->sendTemplate(...)`
+- **Backward compatible** — existing `SignalBridge::sendSms()` calls still work
+- **Balance & transaction management** — account-level operations on the main client
+- **Webhook management** — full CRUD for outbound event webhooks
+- **Export** — download messages and transactions as CSV
+- **Typed exceptions** — specific exception classes for each error type
+- **Facade + DI support** — use either style
+- **Laravel 10, 11, 12, 13** — tested on all current versions
+- **PHP 8.1+**
 
 ## Requirements
 
 - PHP 8.1 or higher
-- Laravel 10.0, 11.0, or 12.0
+- Laravel 10.0, 11.0, 12.0, or 13.0
 - Guzzle HTTP 7.0+
 
 ## Installation
-
-### 1. Install via Composer
 
 ```bash
 composer require nugsoft/signalbridge-laravel-sdk
 ```
 
-### 2. Publish Configuration (Optional)
+Optionally publish the config file:
 
 ```bash
 php artisan vendor:publish --tag=signalbridge-config
 ```
 
-This creates `config/signalbridge.php` where you can customize settings.
+## Configuration
 
-### 3. Configure Environment Variables
-
-Add these to your `.env` file:
+Add to your `.env`:
 
 ```env
 SIGNALBRIDGE_TOKEN=your_api_token_here
+SIGNALBRIDGE_URL=https://signal-bridge.nugsoftapps.net/api
 ```
 
-**Getting Your API Token:**
-
-Contact your system administrator or generate a token via:
+**Getting your token:**
 
 ```bash
-curl -X POST https://signal-bridge.nugsoftstagging.com/api/tokens \
+curl -X POST https://signal-bridge.nugsoftapps.net/api/tokens \
   -H "Content-Type: application/json" \
-  -d '{
-    "email": "your-product@nugsoft.com",
-    "password": "your-password",
-    "expires_in_days": 365
-  }'
+  -d '{"email": "you@example.com", "password": "your-password", "expires_in_days": 365}'
 ```
 
-> [!NOTE]
-> You can also generate your token through the SignalBridge settings page in your account.
+> You can also generate tokens from the SignalBridge dashboard under **Settings → API Tokens**.
+
+---
 
 ## Usage
 
 ### Quick Start
 
-#### Using the Facade (Recommended)
-
 ```php
 use Nugsoft\SignalBridge\Facades\SignalBridge;
 
-// Send SMS
-$result = SignalBridge::sendSms(
-    recipient: '256700000000',
-    message: 'Hello from Laravel!',
-    options: [
-        'metadata' => ['user_id' => 123]
-    ]
-);
+// SMS
+SignalBridge::sms()->send('256700000000', 'Hello from SignalBridge!');
+
+// WhatsApp
+SignalBridge::whatsapp()->send('256700000000', 'Hello on WhatsApp!');
+
+// Mobile Money — collect payment
+SignalBridge::mobileMoney()->initiate('256700000000', 5000);
+
+// Mobile Money — send payout
+SignalBridge::mobileMoney()->disburse('256700000000', 50000);
 ```
 
-#### Using Dependency Injection
+### Dependency Injection
 
 ```php
 use Nugsoft\SignalBridge\SignalBridgeClient;
 
 class NotificationService
 {
-    public function __construct(
-        private SignalBridgeClient $signalBridge
-    ) {}
+    public function __construct(private SignalBridgeClient $signalBridge) {}
 
-    public function sendWelcomeSms(string $phone, string $name)
+    public function sendWelcome(string $phone, string $name): void
     {
-        return $this->signalBridge->sendSms(
-            recipient: $phone,
-            message: "Welcome {$name}! Thanks for joining us."
-        );
+        $this->signalBridge->sms()->send($phone, "Welcome {$name}!");
     }
 }
 ```
 
-### Real-World Examples
+---
 
-#### 1. Send OTP/Verification Code
+## SMS
+
+### Send a Single SMS
+
+```php
+$result = SignalBridge::sms()->send(
+    recipient: '256700000000',
+    message: 'Your OTP is 123456',
+    options: [
+        'sender_id'    => 'MyApp',           // Optional
+        'metadata'     => ['user_id' => 42], // Optional: stored for your records
+        'is_test'      => false,             // Optional: test mode (no charge)
+        'scheduled_at' => '2026-06-01T09:00:00Z', // Optional: ISO 8601
+    ]
+);
+// $result['data']['message_id'], $result['data']['cost'], $result['data']['status']
+```
+
+### Send a Batch of SMS
+
+```php
+$result = SignalBridge::sms()->sendBatch(
+    messages: [
+        ['recipient' => '256700000000', 'message' => 'Hi Alice!', 'metadata' => ['user_id' => 1]],
+        ['recipient' => '256700000001', 'message' => 'Hi Bob!',   'metadata' => ['user_id' => 2]],
+    ],
+    options: ['is_test' => false]
+);
+// $result['data']['successful'], $result['data']['failed']
+```
+
+### Segment Calculation & Cost Estimation
+
+```php
+$sms = SignalBridge::sms();
+
+$segments = $sms->calculateSegments('Hello World'); // 1
+$cost     = $sms->estimateCost('Hello World', segmentPrice: 1.00); // 1.00
+```
+
+**Encoding rules:**
+- GSM 7-bit (standard): 160 chars = 1 segment, 153 chars/segment thereafter
+- Unicode (emoji, Arabic, Chinese…): 70 chars = 1 segment, 67 chars/segment thereafter
+
+---
+
+## WhatsApp
+
+### Send a Plain Message
+
+```php
+SignalBridge::whatsapp()->send(
+    recipient: '256700000000',
+    message: 'Your order #1234 has been shipped.',
+    options: ['metadata' => ['order_id' => 1234]]
+);
+```
+
+### Send a Template Message
+
+Templates must be pre-approved in [Meta Business Manager](https://business.facebook.com).
+
+```php
+SignalBridge::whatsapp()->sendTemplate(
+    recipient: '256700000000',
+    templateName: 'order_confirmation',
+    components: [
+        [
+            'type' => 'body',
+            'parameters' => [
+                ['type' => 'text', 'text' => 'Alice'],
+                ['type' => 'text', 'text' => '#ORD-9821'],
+                ['type' => 'text', 'text' => 'UGX 45,000'],
+            ],
+        ],
+    ],
+    options: ['language' => 'en_US']
+);
+```
+
+---
+
+## Mobile Money
+
+### Collect a Payment (Request-to-Pay)
+
+```php
+$tx = SignalBridge::mobileMoney()->initiate(
+    phone: '256700000000',
+    amount: 15000,
+    currency: 'UGX',
+    options: [
+        'reference'    => 'INV-2026-001',
+        'description'  => 'Invoice payment',
+        'callback_url' => 'https://yourapp.com/webhooks/momo',
+        'metadata'     => ['invoice_id' => 101],
+    ]
+);
+
+$transactionId = $tx['data']['transaction_id'];
+$status        = $tx['data']['status']; // 'pending'
+```
+
+### Poll Transaction Status
+
+```php
+$result = SignalBridge::mobileMoney()->verify('txn-uuid-here');
+// $result['data']['status'] — 'pending' | 'completed' | 'failed'
+```
+
+> Prefer webhooks over polling. Register a `callback_url` in `initiate()` or configure a webhook via `createWebhook()`.
+
+### Disburse (Send Money)
+
+```php
+SignalBridge::mobileMoney()->disburse(
+    phone: '256700000000',
+    amount: 50000,
+    currency: 'UGX',
+    options: [
+        'reference'   => 'SALARY-APR-2026',
+        'description' => 'April salary',
+    ]
+);
+```
+
+---
+
+## Account Operations
+
+These methods are on the main `SignalBridgeClient` and apply across all channels.
+
+### Balance
+
+```php
+$balance = SignalBridge::getBalance('UGX');
+// ['balance' => 996.0, 'currency' => 'UGX', 'segment_price' => 1.0, ...]
+
+$summary = SignalBridge::getBalanceSummary();
+```
+
+### Transaction History
+
+```php
+$transactions = SignalBridge::getTransactions([
+    'type'       => 'debit',        // 'credit' | 'debit'
+    'start_date' => '2026-01-01',
+    'end_date'   => '2026-04-30',
+    'per_page'   => 50,
+    'page'       => 1,
+]);
+```
+
+### Export Data as CSV
+
+```php
+// Save messages to a file
+$csv = SignalBridge::exportMessages(['start_date' => '2026-04-01']);
+Storage::put('exports/messages.csv', $csv);
+
+// Save transactions to a file
+$csv = SignalBridge::exportTransactions(['type' => 'debit']);
+Storage::put('exports/transactions.csv', $csv);
+```
+
+---
+
+## Webhook Management
+
+SignalBridge can POST events to your application when message or payment statuses change.
+
+```php
+// Register a webhook
+$webhook = SignalBridge::createWebhook(
+    url: 'https://yourapp.com/webhooks/signalbridge',
+    events: ['message.delivered', 'message.failed', 'payment.completed'],
+    isActive: true
+);
+$secret = $webhook['data']['secret']; // Store this — shown only once
+
+// List, update, delete
+$list = SignalBridge::listWebhooks();
+SignalBridge::updateWebhook($webhookId, ['is_active' => false]);
+SignalBridge::deleteWebhook($webhookId);
+
+// Rotate secret
+$new = SignalBridge::regenerateWebhookSecret($webhookId);
+```
+
+**Available events:** `message.sent`, `message.delivered`, `message.failed`, `message.permanently_failed`, `payment.completed`, `payment.failed`, `*` (all)
+
+---
+
+## Exception Handling
+
+```php
+use Nugsoft\SignalBridge\Exceptions\InsufficientBalanceException;
+use Nugsoft\SignalBridge\Exceptions\InsufficientPermissionsException;
+use Nugsoft\SignalBridge\Exceptions\NoClientException;
+use Nugsoft\SignalBridge\Exceptions\RateLimitedException;
+use Nugsoft\SignalBridge\Exceptions\ServiceUnavailableException;
+use Nugsoft\SignalBridge\Exceptions\SignalBridgeException;
+use Nugsoft\SignalBridge\Exceptions\UnauthorizedException;
+use Nugsoft\SignalBridge\Exceptions\ValidationException;
+
+try {
+    SignalBridge::sms()->send('256700000000', 'Hello');
+
+} catch (InsufficientBalanceException $e) {
+    $required  = $e->getRequiredBalance();
+    $available = $e->getCurrentBalance();
+
+} catch (ValidationException $e) {
+    $errors     = $e->getErrors();
+    $firstError = $e->getFirstError();
+
+} catch (RateLimitedException $e) {
+    // Slow down requests
+
+} catch (ServiceUnavailableException $e) {
+    // No active vendor configured
+
+} catch (UnauthorizedException $e) {
+    // Invalid or expired token
+
+} catch (InsufficientPermissionsException $e) {
+    // Role doesn't have access
+
+} catch (SignalBridgeException $e) {
+    $data = $e->getData(); // Raw API response body
+}
+```
+
+---
+
+## Real-World Examples
+
+### OTP / Verification Code
 
 ```php
 use Nugsoft\SignalBridge\Facades\SignalBridge;
 use Illuminate\Support\Facades\Cache;
 
-public function sendOTP(Request $request)
+public function sendOtp(Request $request): \Illuminate\Http\JsonResponse
 {
-    $code = rand(100000, 999999);
-
-    // Store in cache for 5 minutes
+    $code = random_int(100000, 999999);
     Cache::put("otp:{$request->phone}", $code, now()->addMinutes(5));
 
-    try {
-        $result = SignalBridge::sendSms(
-            recipient: $request->phone,
-            message: "Your verification code is {$code}. Valid for 5 minutes.",
-            options: [
-                'metadata' => [
-                    'user_id' => $request->user()->id,
-                    'action' => 'otp_verification',
-                    'ip_address' => $request->ip(),
-                ]
-            ]
-        );
+    SignalBridge::sms()->send(
+        recipient: $request->phone,
+        message: "Your verification code is {$code}. Valid for 5 minutes.",
+        options: ['metadata' => ['action' => 'otp', 'ip' => $request->ip()]]
+    );
 
-        return response()->json([
-            'success' => true,
-            'message' => 'OTP sent successfully',
-            'cost' => $result['data']['cost'],
-        ]);
-
-    } catch (\Nugsoft\SignalBridge\Exceptions\InsufficientBalanceException $e) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Insufficient balance',
-            'required' => $e->getRequiredBalance(),
-            'available' => $e->getCurrentBalance(),
-        ], 402);
-    }
+    return response()->json(['success' => true]);
 }
 ```
 
-#### 2. Batch SMS Notifications
+### Order Confirmation via WhatsApp Template
 
 ```php
-use Nugsoft\SignalBridge\Facades\SignalBridge;
-
-public function notifyStudents(Request $request)
+public function confirmOrder(Order $order): void
 {
-    $students = $request->input('students'); // Array of student data
-
-    // Build batch messages
-    $messages = collect($students)->map(function ($student) {
-        return [
-            'recipient' => $student['phone'],
-            'message' => "Hi {$student['name']}, your exam results are ready. Score: {$student['score']}/100",
-            'metadata' => [
-                'student_id' => $student['id'],
-                'exam_id' => $request->exam_id,
-            ]
-        ];
-    })->toArray();
-
-    try {
-        $result = SignalBridge::sendBatch($messages);
-
-        return response()->json([
-            'success' => true,
-            'sent' => $result['data']['successful'],
-            'failed' => $result['data']['failed'],
-        ]);
-
-    } catch (\Nugsoft\SignalBridge\Exceptions\ValidationException $e) {
-        return response()->json([
-            'success' => false,
-            'errors' => $e->getErrors(),
-        ], 422);
-    }
+    SignalBridge::whatsapp()->sendTemplate(
+        recipient: $order->customer_phone,
+        templateName: 'order_confirmation',
+        components: [
+            ['type' => 'body', 'parameters' => [
+                ['type' => 'text', 'text' => $order->customer_name],
+                ['type' => 'text', 'text' => $order->reference],
+                ['type' => 'text', 'text' => number_format($order->total) . ' UGX'],
+            ]],
+        ]
+    );
 }
 ```
 
-#### 3. Scheduled Reminders
+### Collect Payment and Listen via Webhook
 
 ```php
-use Nugsoft\SignalBridge\Facades\SignalBridge;
-use Carbon\Carbon;
+// 1. Initiate collection
+$tx = SignalBridge::mobileMoney()->initiate(
+    phone: $invoice->customer_phone,
+    amount: $invoice->total,
+    options: [
+        'reference'    => $invoice->number,
+        'callback_url' => route('webhooks.momo'),
+        'metadata'     => ['invoice_id' => $invoice->id],
+    ]
+);
 
-public function schedulePaymentReminders()
+// 2. Handle webhook (routes/api.php → POST /webhooks/momo)
+public function handle(Request $request): \Illuminate\Http\Response
 {
-    $invoices = Invoice::whereDue(today()->addDay())->get();
+    $status = $request->input('status');   // 'completed' | 'failed'
+    $meta   = $request->input('metadata');
 
-    $messages = $invoices->map(function ($invoice) {
-        return [
-            'recipient' => $invoice->customer_phone,
-            'message' => "Reminder: Invoice #{$invoice->number} of {$invoice->amount} UGX is due tomorrow.",
-            'scheduled_at' => Carbon::tomorrow()->setTime(9, 0)->toIso8601String(),
-            'metadata' => [
-                'invoice_id' => $invoice->id,
-                'type' => 'payment_reminder',
-            ]
-        ];
-    })->toArray();
+    if ($status === 'completed') {
+        Invoice::find($meta['invoice_id'])->markPaid();
+    }
 
-    return SignalBridge::sendBatch($messages);
+    return response()->noContent();
 }
 ```
 
-#### 4. Balance Check Before Sending
+### Batch SMS from Database
+
+Fetch phone numbers from your database and send in batches. The API accepts up to 100 messages per request, so chunk large datasets accordingly.
 
 ```php
+use App\Models\User;
 use Nugsoft\SignalBridge\Facades\SignalBridge;
 
-public function sendBulkWithValidation(array $recipients, string $message)
-{
-    // Get current balance
-    $balance = SignalBridge::getBalance('UGX');
+// Simple — send one message to all active users
+User::where('is_active', true)
+    ->select('phone', 'name')
+    ->chunk(100, function ($users) {
+        $messages = $users->map(fn ($user) => [
+            'recipient' => $user->phone,
+            'message'   => "Hi {$user->name}, your account has been updated.",
+            'metadata'  => ['user_id' => $user->id],
+        ])->toArray();
 
-    // Calculate cost
-    $segments = SignalBridge::calculateSegments($message);
-    $estimatedCost = count($recipients) * $segments * $balance['segment_price'];
+        SignalBridge::sms()->sendBatch($messages);
+    });
+```
 
-    // Validate sufficient balance
-    if ($balance['available_balance'] < $estimatedCost) {
-        throw new \Exception(
-            "Insufficient balance. Required: {$estimatedCost}, Available: {$balance['available_balance']}"
-        );
-    }
+```php
+// Personalised messages — different content per recipient
+$notifications = Notification::with('user')
+    ->where('status', 'pending')
+    ->get()
+    ->chunk(100);
 
-    // Proceed with sending
-    $messages = collect($recipients)->map(fn($phone) => [
-        'recipient' => $phone,
-        'message' => $message,
+foreach ($notifications as $batch) {
+    $messages = $batch->map(fn ($n) => [
+        'recipient' => $n->user->phone,
+        'message'   => $n->body,
+        'metadata'  => ['notification_id' => $n->id],
     ])->toArray();
 
-    return SignalBridge::sendBatch($messages);
+    $result = SignalBridge::sms()->sendBatch($messages);
+
+    // Mark sent
+    $batch->each->update(['status' => 'sent']);
 }
 ```
 
-#### 5. Usage Reporting
-
 ```php
-use Nugsoft\SignalBridge\Facades\SignalBridge;
-
-public function getMonthlyReport(string $month)
-{
-    $startDate = Carbon::parse($month)->startOfMonth()->format('Y-m-d');
-    $endDate = Carbon::parse($month)->endOfMonth()->format('Y-m-d');
-
-    $transactions = SignalBridge::getTransactions([
-        'type' => 'debit',
-        'start_date' => $startDate,
-        'end_date' => $endDate,
-        'per_page' => 100,
-    ]);
-
-    // Group by message type
-    $summary = collect($transactions['data'])
-        ->groupBy(fn($tx) => $tx['metadata']['type'] ?? 'general')
-        ->map(fn($group) => [
-            'count' => $group->count(),
-            'cost' => $group->sum('amount'),
-        ]);
-
-    return [
-        'period' => $month,
-        'total_cost' => collect($transactions['data'])->sum('amount'),
-        'by_type' => $summary,
-    ];
-}
-```
-
-## API Reference
-
-### Send SMS
-
-```php
-SignalBridge::sendSms(
-    recipient: '256700000000',
-    message: 'Your message here',
-    options: [
-        'metadata' => [],                   // Optional: Custom data
-        'is_test' => false,                 // Optional: Test mode flag
-        'scheduled_at' => '2025-12-01...',  // Optional: ISO 8601 datetime
-    ]
-);
-```
-
-**Returns:**
-```php
-[
-    'success' => true,
-    'message' => 'SMS queued successfully',
-    'data' => [
-        'message_id' => 1234,
-        'status' => 'queued',
-        'vendor' => 'SpeedaMobile',
-        'segments' => 1,
-        'cost' => 75.00,
-        'balance_after' => 9925.00
-    ]
-]
-```
-
-### Send Batch SMS
-
-```php
-SignalBridge::sendBatch(
-    messages: [
-        [
-            'recipient' => '256700000000',
-            'message' => 'Message 1',
-            'metadata' => ['order_id' => 123]
-        ],
-        [
-            'recipient' => '256700000001',
-            'message' => 'Message 2',
-            'metadata' => ['order_id' => 124]
-        ],
-    ],
-    options: [
-        'is_test' => false,
-    ]
-);
-```
-
-**Returns:**
-```php
-[
-    'success' => true,
-    'message' => 'Batch SMS processed: 2 successful, 0 failed',
-    'data' => [
-        'total' => 2,
-        'successful' => 2,
-        'failed' => 0,
-        'messages' => [...]
-    ]
-]
-```
-
-### Get Balance
-
-```php
+// With balance check before sending
+$phones  = User::where('subscribed', true)->pluck('phone');
 $balance = SignalBridge::getBalance('UGX');
-```
+$cost    = $phones->count() * SignalBridge::sms()->calculateSegments($message) * $balance['segment_price'];
 
-**Returns:**
-```php
-[
-    'success' => true,
-    'balance' => 100.00,
-    'currency' => 'UGX',
-    'available_balance' => 100.00,
-    'credit_limit' => 0.00,
-    'segment_price' => 0.02
-]
-```
-
-### Get Balance Summary
-
-```php
-$summary = SignalBridge::getBalanceSummary();
-```
-
-### Get Transactions
-
-```php
-$transactions = SignalBridge::getTransactions([
-    'per_page' => 15,
-    'page' => 1,
-    'type' => 'debit',
-    'start_date' => '2025-11-01',
-    'end_date' => '2025-11-30',
-]);
-```
-
-### Calculate Segments
-
-```php
-$segments = SignalBridge::calculateSegments('Your message here');
-// Returns: 1 (for messages up to 160 GSM chars or 70 Unicode chars)
-```
-
-### Estimate Cost
-
-```php
-$cost = SignalBridge::estimateCost(
-    message: 'Your message here',
-    segmentPrice: 0.02
-);
-// Returns: 0.02 (segments * price)
-```
-
-### Token Management
-
-```php
-// Get all tokens
-$tokens = SignalBridge::getTokens();
-
-// Revoke current token
-$result = SignalBridge::revokeCurrentToken();
-```
-
-## Exception Handling
-
-The SDK provides typed exceptions for better error handling:
-
-```php
-use Nugsoft\SignalBridge\Exceptions\InsufficientBalanceException;
-use Nugsoft\SignalBridge\Exceptions\ValidationException;
-use Nugsoft\SignalBridge\Exceptions\NoClientException;
-use Nugsoft\SignalBridge\Exceptions\ServiceUnavailableException;
-use Nugsoft\SignalBridge\Exceptions\SignalBridgeException;
-
-try {
-    SignalBridge::sendSms('256700000000', 'Test message');
-
-} catch (InsufficientBalanceException $e) {
-    // Handle insufficient balance
-    $required = $e->getRequiredBalance();
-    $current = $e->getCurrentBalance();
-    $segments = $e->getSegments();
-
-} catch (ValidationException $e) {
-    // Handle validation errors
-    $errors = $e->getErrors();
-    $firstError = $e->getFirstError();
-
-} catch (NoClientException $e) {
-    // Handle no client associated
-
-} catch (ServiceUnavailableException $e) {
-    // Handle service unavailable (no SMS vendor configured)
-
-} catch (SignalBridgeException $e) {
-    // Handle other API errors
-    $data = $e->getData();
+if ($balance['available_balance'] < $cost) {
+    throw new \RuntimeException("Insufficient balance. Need {$cost} UGX, have {$balance['available_balance']} UGX.");
 }
+
+$phones->chunk(100)->each(function ($chunk) use ($message) {
+    SignalBridge::sms()->sendBatch(
+        $chunk->map(fn ($phone) => ['recipient' => $phone, 'message' => $message])->toArray()
+    );
+});
 ```
 
-## SMS Segments & Pricing
+---
 
-Messages are charged based on segments:
-
-**GSM 7-bit Encoding** (standard characters):
-- Single segment: Up to 160 characters
-- Multi-part: 153 characters per segment
-
-**Unicode Encoding** (emojis, Arabic, Chinese, etc.):
-- Single segment: Up to 70 characters
-- Multi-part: 67 characters per segment
-
-The SDK automatically detects encoding and calculates segments.
-
-## Configuration
-
-After publishing the config file, you can customize:
+## Configuration Reference
 
 ```php
 // config/signalbridge.php
-
 return [
-    'url' => env('SIGNALBRIDGE_URL', 'https://signal-bridge.nugsoftstagging.com/api'),
-    'token' => env('SIGNALBRIDGE_TOKEN'),
-    'timeout' => env('SIGNALBRIDGE_TIMEOUT', 30),
-    'default_sender_id' => env('SIGNALBRIDGE_SENDER_ID', config('app.name')),
-    'logging' => env('SIGNALBRIDGE_LOGGING', true),
+    'url'               => env('SIGNALBRIDGE_URL', 'https://signal-bridge.nugsoftapps.net/api'),
+    'token'             => env('SIGNALBRIDGE_TOKEN'),
+    'timeout'           => env('SIGNALBRIDGE_TIMEOUT', 30),
+    'default_sender_id' => env('SIGNALBRIDGE_SENDER_ID'),
+    'logging'           => env('SIGNALBRIDGE_LOGGING', true),
 ];
 ```
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `SIGNALBRIDGE_TOKEN` | ✅ | — | API authentication token |
+| `SIGNALBRIDGE_URL` | ❌ | Production URL | API base URL |
+| `SIGNALBRIDGE_TIMEOUT` | ❌ | `30` | HTTP request timeout (seconds) |
+| `SIGNALBRIDGE_SENDER_ID` | ❌ | — | Default SMS sender ID (max 11 chars) |
+| `SIGNALBRIDGE_LOGGING` | ❌ | `true` | Log API errors to Laravel log |
+
+**Laravel compatibility:** 10, 11, 12, 13
+
+---
 
 ## Testing
 
@@ -485,12 +506,11 @@ composer test
 
 ## License
 
-The MIT License (MIT). This package is proprietary to Nugsoft.
+MIT. See [LICENSE](LICENSE).
 
 ## Credits
 
-- **Asaba William**
-- **Nugsoft Dev team**
+- **Asaba William** — CTO
 
 ---
 
