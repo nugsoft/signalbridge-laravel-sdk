@@ -18,6 +18,8 @@ use Nugsoft\SignalBridge\Exceptions\ServiceUnavailableException;
 use Nugsoft\SignalBridge\Exceptions\SignalBridgeException;
 use Nugsoft\SignalBridge\Exceptions\UnauthorizedException;
 use Nugsoft\SignalBridge\Exceptions\ValidationException;
+use Nugsoft\SignalBridge\Support\MessageSegments;
+use Nugsoft\SignalBridge\Support\WebhookSignature;
 
 class SignalBridgeClient implements SignalBridgeClientInterface
 {
@@ -495,54 +497,57 @@ class SignalBridgeClient implements SignalBridgeClientInterface
   }
 
   /**
-   * Calculate approximate segments for a message
+   * Look up one message's delivery status.
    *
-   * @param  string  $message  Message content
-   * @return int Number of segments
+   * @param  int   $messageId  The id returned by sendSms()
+   * @param  bool  $refresh    Ask the vendor live rather than returning the
+   *                           stored status
+   */
+  public function getMessageStatus(int $messageId, bool $refresh = false): array
+  {
+    return $this->sms()->status($messageId, $refresh);
+  }
+
+  /**
+   * List messages with their delivery status.
+   *
+   * @param  array  $filters  ids, status, recipient, channel, start_date,
+   *                          end_date, per_page, page
+   */
+  public function getMessages(array $filters = []): array
+  {
+    return $this->sms()->messages($filters);
+  }
+
+  /**
+   * Verify that an inbound webhook really came from SignalBridge.
+   *
+   * @param  \Illuminate\Http\Request  $request  The incoming webhook request
+   * @param  string  $secret  The signing secret shown when the webhook was created
+   */
+  public function verifyWebhookSignature($request, string $secret): bool
+  {
+    return WebhookSignature::verifyRequest($request, $secret);
+  }
+
+  /**
+   * Segments a message will be split into.
+   *
+   * Delegates to MessageSegments so this and the gateway cannot disagree.
    */
   public function calculateSegments(string $message): int
   {
-    $length = mb_strlen($message);
-    $isUnicode = !$this->isGsm7Bit($message);
-
-    if ($isUnicode) {
-      return $length <= 70 ? 1 : (int) ceil($length / 67);
-    }
-
-    return $length <= 160 ? 1 : (int) ceil($length / 153);
+    return MessageSegments::count($message);
   }
 
   /**
-   * Estimate cost for a message
+   * Estimate cost for a message.
    *
-   * @param  string  $message  Message content
-   * @param  float  $segmentPrice  Price per segment
-   * @return float Estimated cost
+   * @param  float  $segmentPrice  Price per segment, from getBalance()
    */
   public function estimateCost(string $message, float $segmentPrice): float
   {
-    return $this->calculateSegments($message) * $segmentPrice;
-  }
-
-  /**
-   * Check if message uses GSM 7-bit encoding using an O(n) lookup table.
-   */
-  private function isGsm7Bit(string $text): bool
-  {
-    static $lookup = null;
-
-    if ($lookup === null) {
-      $chars = "@£\$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !\"#¤%&'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà";
-      $lookup = array_flip(mb_str_split($chars));
-    }
-
-    foreach (mb_str_split($text) as $char) {
-      if (!isset($lookup[$char])) {
-        return false;
-      }
-    }
-
-    return true;
+    return MessageSegments::estimateCost($message, $segmentPrice);
   }
 
   /**

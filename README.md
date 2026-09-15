@@ -11,9 +11,10 @@ Send SMS, WhatsApp messages, and initiate Mobile Money transactions through a si
 
 | Channel | Status | Methods |
 |---|---|---|
-| **SMS** | ✅ Available | `send()`, `sendBatch()`, `calculateSegments()`, `estimateCost()` |
+| **SMS** | ✅ Available | `send()`, `sendBatch()`, `status()`, `messages()`, `calculateSegments()`, `estimateCost()` |
 | **WhatsApp** | ✅ Available | `send()`, `sendTemplate()` |
-| **Mobile Money** | ✅ Available | `initiate()`, `verify()`, `disburse()` |
+| **Mobile Money** | ✅ Available | `initiate()`, `verify()` |
+| **Mobile Money payouts** | 🔜 Planned | `disburse()` — the gateway exposes no disbursement endpoint yet |
 | **USSD** | 🔜 Planned | `push()`, `session()`, `respond()` |
 
 ## Features
@@ -21,8 +22,9 @@ Send SMS, WhatsApp messages, and initiate Mobile Money transactions through a si
 - **Multi-channel API** — SMS, WhatsApp, Mobile Money, and USSD (planned) through one SDK
 - **Channel-fluent interface** — `SignalBridge::sms()->send(...)`, `SignalBridge::whatsapp()->sendTemplate(...)`
 - **Backward compatible** — existing `SignalBridge::sendSms()` calls still work
+- **Delivery status** — poll what was delivered, per message or per batch
 - **Balance & transaction management** — account-level operations on the main client
-- **Webhook management** — full CRUD for outbound event webhooks
+- **Webhook management** — full CRUD for outbound event webhooks, plus signature verification
 - **Export** — download messages and transactions as CSV
 - **Typed exceptions** — specific exception classes for each error type
 - **Facade + DI support** — use either style
@@ -84,8 +86,8 @@ SignalBridge::whatsapp()->send('256700000000', 'Hello on WhatsApp!');
 // Mobile Money — collect payment
 SignalBridge::mobileMoney()->initiate('256700000000', 5000);
 
-// Mobile Money — send payout
-SignalBridge::mobileMoney()->disburse('256700000000', 50000);
+// Delivery status, without hosting a webhook endpoint
+SignalBridge::sms()->status($messageId);
 ```
 
 ### Dependency Injection
@@ -137,6 +139,69 @@ $result = SignalBridge::sms()->sendBatch(
 // $result['data']['successful'], $result['data']['failed']
 ```
 
+### Delivery Status
+
+Webhooks push a status change to you the moment it happens. These pull the
+current status instead — no endpoint of your own to host, and the only option
+that works for every message (see the note on bulk below).
+
+```php
+$sms = SignalBridge::sms();
+
+// One message, by the id send() returned
+$result = $sms->status(1234);
+$result['data']['status'];        // 'queued' | 'sent' | 'delivered' | 'failed' | 'permanently_failed'
+$result['data']['delivered_at'];  // ISO-8601, or null
+$result['data']['error_message']; // why it failed, when it did
+
+// Ask the vendor live rather than reading the stored status.
+// Rate limited, and rarely needed — the gateway polls vendors in the background.
+$sms->status(1234, refresh: true);
+```
+
+| Status | Meaning |
+|---|---|
+| `queued` | Accepted and charged, waiting for a worker |
+| `processing` | Being handed to the vendor |
+| `sent` | The vendor accepted it; delivery not yet confirmed |
+| `delivered` | Confirmed delivered to the handset |
+| `failed` | Rejected, or reported undelivered |
+| `permanently_failed` | Every retry exhausted — **your balance was refunded** |
+
+Only `delivered`, `failed` and `permanently_failed` are final.
+
+#### Checking a whole batch
+
+`sendBatch()` returns an id per accepted recipient. Ask about all of them at
+once — `summary` counts the entire filtered set, not just the current page, so
+one call tells you how the batch went:
+
+```php
+$result = SignalBridge::sms()->messages(['ids' => [1234, 1235, 1236]]);
+
+$result['summary']['total'];                  // 3
+$result['summary']['by_status']['delivered']; // 2
+$result['summary']['by_status']['failed'];    // 1
+```
+
+Or ask what failed today, without tracking ids at all:
+
+```php
+SignalBridge::sms()->messages([
+    'status'     => 'failed',
+    'start_date' => now()->toDateString(),
+]);
+```
+
+Filters: `ids`, `status`, `recipient`, `channel`, `start_date`, `end_date`,
+`per_page`, `page`.
+
+> **Bulk sends and SpeedaMobile.** SpeedaMobile does not send delivery reports
+> for bulk traffic. SignalBridge polls it in the background instead, so
+> `delivered` and `failed` are still accurate for those messages — they just
+> arrive within minutes rather than seconds, and the usual `message.delivered`
+> webhook still fires. Nothing to configure.
+
 ### Segment Calculation & Cost Estimation
 
 ```php
@@ -149,6 +214,17 @@ $cost     = $sms->estimateCost('Hello World', segmentPrice: 1.00); // 1.00
 **Encoding rules:**
 - GSM 7-bit (standard): 160 chars = 1 segment, 153 chars/segment thereafter
 - Unicode (emoji, Arabic, Chinese…): 70 chars = 1 segment, 67 chars/segment thereafter
+
+`calculateSegments()` mirrors the gateway's own billing calculation exactly, so
+an estimate matches the invoice. Two things this means in practice:
+
+- A newline does **not** make a message Unicode. Multi-line SMS bills as GSM.
+- Neither do the escape-table characters `^ { } \ [ ] ~ | €`, so a templated
+  message like `Hi {name}` is still GSM. (Strict GSM-7 charges two septets for
+  each of those; SignalBridge bills them as one, and the SDK matches.)
+
+Both implementations are covered by the same test cases. If you find a message
+where the estimate and the charge disagree, that is a bug — please report it.
 
 ---
 
@@ -218,19 +294,20 @@ $result = SignalBridge::mobileMoney()->verify('txn-uuid-here');
 
 > Prefer webhooks over polling. Register a `callback_url` in `initiate()` or configure a webhook via `createWebhook()`.
 
-### Disburse (Send Money)
+### Disburse (Send Money) — not available yet
 
 ```php
-SignalBridge::mobileMoney()->disburse(
-    phone: '256700000000',
-    amount: 50000,
-    currency: 'UGX',
-    options: [
-        'reference'   => 'SALARY-APR-2026',
-        'description' => 'April salary',
-    ]
-);
+SignalBridge::mobileMoney()->disburse('256700000000', 50000);
+// throws ServiceUnavailableException
 ```
+
+The SignalBridge API does not expose a disbursement endpoint. The provider
+driver exists server-side, but sending money out is not switched on, so this
+method throws `ServiceUnavailableException` immediately rather than issuing a
+request that would 404 and look like a misconfigured `SIGNALBRIDGE_URL`.
+
+Collecting payments with `initiate()` works normally. Contact the SignalBridge
+team if you need payouts enabled.
 
 ---
 
@@ -275,13 +352,14 @@ Storage::put('exports/transactions.csv', $csv);
 
 ## Webhook Management
 
-SignalBridge can POST events to your application when message or payment statuses change.
+SignalBridge POSTs an event to your application whenever a message changes
+state, so you do not have to poll for it.
 
 ```php
 // Register a webhook
 $webhook = SignalBridge::createWebhook(
     url: 'https://yourapp.com/webhooks/signalbridge',
-    events: ['message.delivered', 'message.failed', 'payment.completed'],
+    events: ['message.delivered', 'message.failed'],
     isActive: true
 );
 $secret = $webhook['data']['secret']; // Store this — shown only once
@@ -295,7 +373,54 @@ SignalBridge::deleteWebhook($webhookId);
 $new = SignalBridge::regenerateWebhookSecret($webhookId);
 ```
 
-**Available events:** `message.sent`, `message.delivered`, `message.failed`, `message.permanently_failed`, `payment.completed`, `payment.failed`, `*` (all)
+**Available events:** `message.sent`, `message.delivered`, `message.failed`,
+`message.permanently_failed`, and `*` for all of them. Anything else is
+rejected with a 422.
+
+`message.permanently_failed` fires when every retry has been exhausted. The
+charge for that message is refunded to your balance at the same time, so you
+will also see a `refund` entry in `getTransactions()`.
+
+Webhooks can also be managed from the SignalBridge dashboard under
+**Settings → Webhooks**, which shows delivery health and can send a test event
+to check your endpoint is reachable.
+
+### Verifying a Webhook
+
+Every request is signed: an HMAC-SHA256 of the **raw request body**, keyed with
+your webhook secret, in the `X-SignalBridge-Signature` header. Verify it before
+acting on anything.
+
+```php
+use Nugsoft\SignalBridge\Support\WebhookSignature;
+
+Route::post('/webhooks/signalbridge', function (Request $request) {
+    if (! WebhookSignature::verifyRequest($request, config('services.signalbridge.webhook_secret'))) {
+        abort(403);
+    }
+
+    $event = $request->header(WebhookSignature::EVENT_HEADER); // 'message.delivered'
+
+    match ($event) {
+        'message.delivered' => Order::markNotified($request->input('message_id')),
+        'message.failed', 'message.permanently_failed' => Order::flagSmsFailure($request->input('message_id')),
+        default => null,
+    };
+
+    return response()->noContent();
+});
+```
+
+Two details this helper gets right, and both fail silently if you roll your own:
+
+- It signs the **raw body**, not a re-encoded copy of the parsed payload.
+  Re-encoding only matches while your JSON key order happens to match the
+  sender's.
+- It compares with `hash_equals`. A plain `===` leaks the expected digest one
+  byte at a time to anyone willing to measure.
+
+Exclude the route from CSRF protection, and return a 2xx quickly — a webhook
+that fails ten times in a row is paused automatically.
 
 ---
 
@@ -397,7 +522,10 @@ $tx = SignalBridge::mobileMoney()->initiate(
     ]
 );
 
-// 2. Handle webhook (routes/api.php → POST /webhooks/momo)
+// 2. Handle the provider callback (routes/api.php → POST /webhooks/momo)
+//    Note: this is the mobile money provider calling your callback_url. It is
+//    not a SignalBridge webhook, so it carries no X-SignalBridge-Signature —
+//    verify it per your provider's own scheme.
 public function handle(Request $request): \Illuminate\Http\Response
 {
     $status = $request->input('status');   // 'completed' | 'failed'
@@ -410,6 +538,41 @@ public function handle(Request $request): \Illuminate\Http\Response
     return response()->noContent();
 }
 ```
+
+### Reconciling a Batch
+
+```php
+// 1. Send, keeping the ids
+$result = SignalBridge::sms()->sendBatch(
+    collect($recipients)->map(fn ($r) => [
+        'recipient' => $r->phone,
+        'message'   => "Hi {$r->name}, your statement is ready.",
+    ])->all()
+);
+
+$ids = collect($result['data']['messages'])
+    ->where('success', true)
+    ->pluck('data.message_id')
+    ->all();
+
+// 2. Later — a scheduled job, say — ask how they did
+$status = SignalBridge::sms()->messages(['ids' => $ids]);
+
+logger()->info('Statement run', $status['summary']['by_status']);
+// ['delivered' => 480, 'failed' => 12, 'sent' => 8]
+
+// 3. Chase only the ones that failed
+foreach ($status['data'] as $message) {
+    if (in_array($message['status'], ['failed', 'permanently_failed'], true)) {
+        Recipient::wherePhone($message['recipient'])->first()?->flagUndeliverable(
+            $message['error_message']
+        );
+    }
+}
+```
+
+> Works for bulk sends through SpeedaMobile too, which never reports delivery
+> by webhook — SignalBridge polls it for you.
 
 ### Batch SMS from Database
 
