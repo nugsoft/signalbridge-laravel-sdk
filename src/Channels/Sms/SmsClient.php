@@ -4,6 +4,7 @@ namespace Nugsoft\SignalBridge\Channels\Sms;
 
 use Nugsoft\SignalBridge\Channels\BaseChannelClient;
 use Nugsoft\SignalBridge\Exceptions\ValidationException;
+use Nugsoft\SignalBridge\Support\MessageSegments;
 
 class SmsClient extends BaseChannelClient
 {
@@ -97,56 +98,69 @@ class SmsClient extends BaseChannelClient
   }
 
   /**
+   * Look up one message's delivery status.
+   *
+   * @param  int   $messageId  The id returned by send()
+   * @param  bool  $refresh    Ask the vendor live instead of returning the
+   *                           stored status. Rate limited, and rarely needed —
+   *                           the gateway polls vendors in the background.
+   */
+  public function status(int $messageId, bool $refresh = false): array
+  {
+    $response = $this->http()->get(
+      "{$this->baseUrl}/sms/messages/{$messageId}",
+      $refresh ? ['refresh' => 1] : []
+    );
+
+    if ($response->failed()) {
+      $this->handleError($response);
+    }
+
+    return $this->parseResponse($response);
+  }
+
+  /**
+   * List messages with their delivery status.
+   *
+   * Pass 'ids' to follow up a batch — the ids come back from sendBatch(). The
+   * 'summary' key in the response counts the whole filtered set, not just the
+   * current page, so one call answers "how did that batch go".
+   *
+   * @param  array  $filters  ids, status, recipient, channel, start_date,
+   *                          end_date, per_page, page
+   */
+  public function messages(array $filters = []): array
+  {
+    if (isset($filters['ids']) && is_array($filters['ids'])) {
+      $filters['ids'] = implode(',', $filters['ids']);
+    }
+
+    $response = $this->http()->get("{$this->baseUrl}/sms/messages", $filters);
+
+    if ($response->failed()) {
+      $this->handleError($response);
+    }
+
+    return $this->parseResponse($response);
+  }
+
+  /**
    * Calculate the number of message segments for billing purposes.
    *
-   * GSM 7-bit: 160 chars per segment (153 for multi-part)
-   * Unicode:   70 chars per segment (67 for multi-part)
-   *
-   * @param  string  $message  Message text
-   * @return int Number of segments
+   * Delegates to MessageSegments so this and the gateway cannot disagree.
    */
   public function calculateSegments(string $message): int
   {
-    $length = mb_strlen($message);
-    $isUnicode = !$this->isGsm7Bit($message);
-
-    if ($isUnicode) {
-      return $length <= 70 ? 1 : (int) ceil($length / 67);
-    }
-
-    return $length <= 160 ? 1 : (int) ceil($length / 153);
+    return MessageSegments::count($message);
   }
 
   /**
    * Estimate the cost of sending a message.
    *
-   * @param  string  $message       Message text
-   * @param  float   $segmentPrice  Price per segment (from getBalance())
-   * @return float Estimated total cost
+   * @param  float  $segmentPrice  Price per segment, from getBalance()
    */
   public function estimateCost(string $message, float $segmentPrice): float
   {
-    return $this->calculateSegments($message) * $segmentPrice;
-  }
-
-  /**
-   * Check if all characters in a string fall within the GSM 7-bit alphabet.
-   */
-  private function isGsm7Bit(string $text): bool
-  {
-    static $lookup = null;
-
-    if ($lookup === null) {
-      $chars = "@£\$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !\"#¤%&'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà";
-      $lookup = array_flip(mb_str_split($chars));
-    }
-
-    foreach (mb_str_split($text) as $char) {
-      if (!isset($lookup[$char])) {
-        return false;
-      }
-    }
-
-    return true;
+    return MessageSegments::estimateCost($message, $segmentPrice);
   }
 }

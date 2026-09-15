@@ -2,6 +2,50 @@
 
 All notable changes to `signalbridge-laravel-sdk` will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- **`estimateCost()` over-quoted templated messages.** The GSM alphabet was
+  missing the escape-table characters `^ { } \ [ ] ~ | €`, so any message
+  containing a placeholder such as `{name}` was treated as Unicode and billed at
+  67 characters per segment instead of 153. A 200-character templated message
+  was quoted at three segments where the gateway charges two.
+- Segment counting now lives in one place (`Support\MessageSegments`) rather
+  than being duplicated in `SignalBridgeClient` and `SmsClient`, which is how the
+  two drifted apart in the first place. It mirrors the gateway's own calculation
+  and is covered by the same test cases on both sides.
+- Unicode length is counted in UTF-16 code units, so only characters outside the
+  Basic Multilingual Plane take two. Three-byte sequences such as CJK were
+  previously counted as two.
+
+### Added
+- **`SmsClient::status(int $messageId, bool $refresh = false)`** — read one
+  message's delivery status. `$refresh` asks the vendor live.
+- **`SmsClient::messages(array $filters = [])`** — list messages with a status
+  breakdown. Pass `ids` to reconcile a batch in a single call; `summary` counts
+  the whole filtered set rather than the current page.
+- **`SignalBridgeClient::getMessageStatus()` / `getMessages()`** — the same, on
+  the main client.
+- **`Support\WebhookSignature`** — verify inbound webhooks. `verifyRequest()`
+  checks the raw body with `hash_equals`, which is the part that is easy to get
+  wrong by hand and fails silently when you do.
+- **`SignalBridgeClient::verifyWebhookSignature()`** — convenience wrapper.
+- A test suite. The package previously declared a `Tests\` autoload namespace
+  and dev dependencies on phpunit, testbench and mockery, but shipped no tests.
+
+### Changed
+- **`MobileMoneyClient::disburse()` now throws `ServiceUnavailableException`
+  immediately.** The gateway exposes no `/mobile-money/disburse` endpoint, so
+  the call used to 404 and be reported as "API endpoint not found. Verify
+  SIGNALBRIDGE_URL configuration" — which points at the wrong problem entirely.
+  Collecting payments with `initiate()` is unaffected.
+- README no longer lists `payment.completed` and `payment.failed` as webhook
+  events. The gateway rejects them with a 422 and has never dispatched them; the
+  documented example would have failed.
+- `createWebhook()`'s `$isActive` argument now takes effect. The gateway ignored
+  `is_active` on create, so asking for a paused webhook produced a live one.
+  Requires a gateway with that fix deployed.
+
 ## [2.0.0] - 2026-04-23
 
 ### Added

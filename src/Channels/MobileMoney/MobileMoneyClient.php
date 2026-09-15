@@ -3,6 +3,7 @@
 namespace Nugsoft\SignalBridge\Channels\MobileMoney;
 
 use Nugsoft\SignalBridge\Channels\BaseChannelClient;
+use Nugsoft\SignalBridge\Exceptions\ServiceUnavailableException;
 use Nugsoft\SignalBridge\Exceptions\ValidationException;
 
 class MobileMoneyClient extends BaseChannelClient
@@ -97,32 +98,23 @@ class MobileMoneyClient extends BaseChannelClient
    *     amount: 50000,
    *     options: ['reference' => 'PAYOUT-42', 'description' => 'Staff commission']
    * );
+   *
+   * @note NOT YET AVAILABLE. The gateway exposes no disbursement endpoint, so
+   *       this always throws ServiceUnavailableException rather than pretending
+   *       to move money. Collecting payments via initiate() works normally.
+   *
+   * @throws ServiceUnavailableException always, until the endpoint ships
    */
   public function disburse(string $phone, float $amount, string $currency = 'UGX', array $options = []): array
   {
-    if (empty(trim($phone))) {
-      throw new ValidationException('Phone number is required');
-    }
-
-    if ($amount <= 0) {
-      throw new ValidationException('Amount must be greater than zero');
-    }
-
-    $payload = [
-      'phone'       => $phone,
-      'amount'      => $amount,
-      'currency'    => $currency,
-      'reference'   => $options['reference'] ?? null,
-      'description' => $options['description'] ?? null,
-      'metadata'    => $options['metadata'] ?? [],
-    ];
-
-    $response = $this->http()->post("{$this->baseUrl}/mobile-money/disburse", $payload);
-
-    if ($response->failed()) {
-      $this->handleError($response);
-    }
-
-    return $this->parseResponse($response);
+    // The gateway has no /mobile-money/disburse route. The driver behind it is
+    // written, but sending money out is not exposed over the API yet. Calling
+    // through would 404, which the error handler reports as a bad
+    // SIGNALBRIDGE_URL and sends you looking in the wrong place.
+    throw new ServiceUnavailableException(
+      'Mobile money disbursement is not available yet: the SignalBridge API does not expose '
+        .'/mobile-money/disburse. Use initiate() to collect payments. Contact the SignalBridge '
+        .'team if you need payouts enabled.'
+    );
   }
 }

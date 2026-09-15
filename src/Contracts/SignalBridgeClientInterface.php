@@ -19,6 +19,10 @@ interface SignalBridgeClientInterface
   public function sendSms(string $recipient, string $message, array $options = []): array;
   public function sendBatch(array $messages, array $options = []): array;
 
+  // Delivery status (the pull side of delivery reporting)
+  public function getMessageStatus(int $messageId, bool $refresh = false): array;
+  public function getMessages(array $filters = []): array;
+
   // Account-level
   public function getBalance(string $currency = 'UGX'): array;
   public function getBalanceSummary(): array;
@@ -33,6 +37,7 @@ interface SignalBridgeClientInterface
   public function updateWebhook(int $webhookId, array $data): array;
   public function deleteWebhook(int $webhookId): array;
   public function regenerateWebhookSecret(int $webhookId): array;
+  public function verifyWebhookSignature($request, string $secret): bool;
 
   // Exports
   public function exportMessages(array $filters = []): string;
