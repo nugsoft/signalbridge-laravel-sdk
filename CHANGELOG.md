@@ -32,6 +32,12 @@ All notable changes to `signalbridge-laravel-sdk` will be documented in this fil
 - **`SignalBridgeClient::verifyWebhookSignature()`** — convenience wrapper.
 - A test suite. The package previously declared a `Tests\` autoload namespace
   and dev dependencies on phpunit, testbench and mockery, but shipped no tests.
+- **Agent guidance at `resources/boost/guidelines/core.md`.** Laravel Boost
+  discovers guidelines shipped by packages at that path and merges them into the
+  consuming project's `CLAUDE.md`, `.github/copilot-instructions.md` and
+  `.junie/guidelines.md`, so an agent working in a project that installs this SDK
+  knows the rules that cost money to get wrong — chiefly that an unmocked test
+  sends a real SMS. `AGENTS.md` points at the same file rather than copying it.
 
 ### Changed
 - **`MobileMoneyClient::disburse()` now throws `ServiceUnavailableException`

@@ -31,6 +31,18 @@ Send SMS, WhatsApp messages, and initiate Mobile Money transactions through a si
 - **Laravel 10, 11, 12, 13** — tested on all current versions
 - **PHP 8.1+**
 
+## Using this SDK with an AI coding agent
+
+The package ships agent guidance at `resources/boost/guidelines/core.md`,
+covering the things that are easy to get expensively wrong — sending real
+messages from a test suite, hand-rolling segment costs, skipping webhook
+signature verification.
+
+If your project uses [Laravel Boost](https://github.com/laravel/boost), it is
+merged into your `CLAUDE.md` and equivalents automatically when you run
+`php artisan boost:install`. Otherwise, point your agent at the file or copy it
+into your own instructions.
+
 ## Requirements
 
 - PHP 8.1 or higher
