@@ -75,10 +75,34 @@ SIGNALBRIDGE_URL=https://signal-bridge.nugsoftapps.net/api
 ```bash
 curl -X POST https://signal-bridge.nugsoftapps.net/api/tokens \
   -H "Content-Type: application/json" \
-  -d '{"email": "you@example.com", "password": "your-password", "expires_in_days": 365}'
+  -d '{"email": "you@example.com", "password": "your-password", "token_name": "My App", "expires_in_days": 365}'
 ```
 
+The token comes back once, as `data.token`.
+
 > You can also generate tokens from the SignalBridge dashboard under **Settings → API Tokens**.
+
+### Token abilities
+
+A token carries abilities and the gateway checks them on every request. Created
+without an `abilities` list it gets `*` and reaches everything, which is what
+existing tokens carry — so nothing needs changing unless you want to narrow one.
+
+| Ability | Allows |
+|---------|--------|
+| `sms:send` | `sms()->send()`, `sms()->sendBatch()` |
+| `sms:read` | `sms()->status()`, `sms()->messages()` |
+| `balance:read` | `getBalance()`, `getBalanceSummary()`, `getTransactions()` |
+| `balance:request-credit` | asking administrators for a top-up |
+| `webhooks:read` / `webhooks:write` | reading / changing webhooks |
+| `export:read` | `exportMessages()`, `exportTransactions()` |
+
+A call made with a token that lacks the ability throws
+`InsufficientPermissionsException`; the response names the missing ability.
+Listing and revoking your own tokens is always allowed.
+
+> `whatsapp:send`, `mobile-money:send` and `mobile-money:read` are not issuable at the moment: the WhatsApp and mobile money channels are unreleased, so reaching either needs a full-access (`*`) token.
+
 
 ---
 
@@ -286,16 +310,21 @@ $tx = SignalBridge::mobileMoney()->initiate(
     amount: 15000,
     currency: 'UGX',
     options: [
-        'reference'    => 'INV-2026-001',
-        'description'  => 'Invoice payment',
-        'callback_url' => 'https://yourapp.com/webhooks/momo',
-        'metadata'     => ['invoice_id' => 101],
+        'reference' => 'INV-2026-001',
+        // Shown to the payer on their handset. 'description' is accepted as an
+        // alias for it.
+        'note'      => 'Invoice payment',
     ]
 );
 
 $transactionId = $tx['data']['transaction_id'];
 $status        = $tx['data']['status']; // 'pending'
 ```
+
+> The gateway reads `reference` and `note` only. `metadata` and `callback_url`
+> were accepted here previously and silently dropped by the API, so they are no
+> longer sent — listen for the result with `verify()` until mobile money
+> callbacks are available.
 
 ### Poll Transaction Status
 

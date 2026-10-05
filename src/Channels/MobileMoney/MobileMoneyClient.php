@@ -43,14 +43,23 @@ class MobileMoneyClient extends BaseChannelClient
     }
 
     $payload = [
-      'phone'        => $phone,
-      'amount'       => $amount,
-      'currency'     => $currency,
-      'reference'    => $options['reference'] ?? null,
-      'description'  => $options['description'] ?? null,
-      'metadata'     => $options['metadata'] ?? [],
-      'callback_url' => $options['callback_url'] ?? null,
+      'phone'    => $phone,
+      'amount'   => $amount,
+      'currency' => strtoupper($currency),
     ];
+
+    if (! empty($options['reference'])) {
+      $payload['reference'] = $options['reference'];
+    }
+
+    // 'note' is the text shown to the payer, and the only descriptive field the
+    // gateway reads. 'description', 'metadata' and 'callback_url' were accepted
+    // here and then silently dropped by the API, so they are mapped or omitted.
+    $note = $options['note'] ?? $options['description'] ?? null;
+
+    if (! empty($note)) {
+      $payload['note'] = $note;
+    }
 
     $response = $this->http()->post("{$this->baseUrl}/mobile-money/initiate", $payload);
 

@@ -4,7 +4,19 @@ All notable changes to `signalbridge-laravel-sdk` will be documented in this fil
 
 ## [Unreleased]
 
+### Changed
+- **Token abilities are now enforced by the gateway.** A token scoped to, say,
+  `sms:send` is refused elsewhere with a 403, which this SDK raises as
+  `InsufficientPermissionsException`. Tokens created with `*` — the default — are
+  unaffected. See "Token abilities" in the README.
+
 ### Fixed
+- `mobileMoney()->initiate()` now sends `note`, the only descriptive field the
+  gateway reads, and accepts `description` as an alias for it. `metadata` and
+  `callback_url` were being sent and silently dropped by the API, so they are no
+  longer part of the payload. The currency is upper-cased.
+- The hard-coded fallback base URL used `http://` where the published config and
+  documentation use `https://`.
 - **`estimateCost()` over-quoted templated messages.** The GSM alphabet was
   missing the escape-table characters `^ { } \ [ ] ~ | €`, so any message
   containing a placeholder such as `{name}` was treated as Unicode and billed at
