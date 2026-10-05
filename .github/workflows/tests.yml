@@ -1,0 +1,61 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push supersedes an in-flight run on the same ref.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: PHP ${{ matrix.php }} / Laravel ${{ matrix.laravel }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      # Testbench pins the framework version, so one constraint per row is
+      # enough. Spelled out rather than a full product because PHP and Laravel
+      # support windows only overlap for some pairs — Laravel 12 needs PHP 8.2+.
+      matrix:
+        include:
+          - { php: "8.1", laravel: "10", testbench: "^8.0" }
+          - { php: "8.2", laravel: "11", testbench: "^9.0" }
+          - { php: "8.3", laravel: "12", testbench: "^10.0" }
+          - { php: "8.4", laravel: "12", testbench: "^10.0" }
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up PHP ${{ matrix.php }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+
+      - name: Validate composer.json
+        run: composer validate --strict
+
+      - name: Install dependencies
+        run: |
+          composer require --dev "orchestra/testbench:${{ matrix.testbench }}" \
+            --no-interaction --no-update
+          composer update --prefer-dist --no-interaction --no-progress
+
+      - name: Show versions
+        run: |
+          php -v | head -1
+          composer show illuminate/support | grep -i versions
+
+      - name: Run tests
+        # Http::fake() in every test. A test that reaches the real gateway sends
+        # a real SMS and bills the account, so no token is configured here.
+        run: vendor/bin/phpunit
