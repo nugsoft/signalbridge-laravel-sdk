@@ -34,7 +34,7 @@ class SignalBridgeClient implements SignalBridgeClientInterface
 
   public function __construct(?string $token = null, ?string $baseUrl = null, int $timeout = 30)
   {
-    $this->baseUrl = rtrim($baseUrl ?? config('signalbridge.url', 'http://signal-bridge.nugsoftapps.net/api'), '/');
+    $this->baseUrl = rtrim($baseUrl ?? config('signalbridge.url', 'https://signal-bridge.nugsoftapps.net/api'), '/');
     $this->token = $token ?? config('signalbridge.token', '');
     $this->timeout = $timeout;
 

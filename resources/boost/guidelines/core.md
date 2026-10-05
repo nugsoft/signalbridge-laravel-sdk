@@ -6,15 +6,35 @@ exist because each one has gone wrong in practice.
 
 ### Setup
 
-Requires `SIGNALBRIDGE_TOKEN` and `SIGNALBRIDGE_URL` in `.env`. Use the
-`SignalBridge` facade, or inject `SignalBridgeClientInterface`.
+Requires `SIGNALBRIDGE_TOKEN` and `SIGNALBRIDGE_URL` in `.env`. `SIGNALBRIDGE_URL`
+must include the `/api` suffix. Use the `SignalBridge` facade, or inject
+`SignalBridgeClientInterface`.
 
 ```php
 SignalBridge::sms()->send('256700000000', 'Your code is 1234');
 ```
 
 Recipients are international format without a `+` (`256700000000`). Sender IDs
-are at most 11 characters and must be registered with the vendor.
+are at most 11 characters and must be registered with the vendor. SMS bodies are
+capped at 1000 characters, WhatsApp at 4096. `scheduled_at` must be in the future.
+
+### Never retry a send
+
+The gateway charges a message the moment it accepts one, and there is no
+idempotency key. Wrapping a send in a retry — `retry()`, a queued job with
+`$tries > 1`, an HTTP middleware, a "resend" button without a guard — bills and
+delivers it twice. A timeout is the dangerous case: it says nothing about whether
+the gateway processed the request.
+
+```php
+retry(3, fn () => SignalBridge::sms()->send($to, $body));   // never do this
+```
+
+If a send times out, find out what happened before sending again:
+
+```php
+SignalBridge::sms()->messages(['recipient' => $to, 'start_date' => today()->toDateString()]);
+```
 
 ### Never send real messages from tests or seeders
 
@@ -47,13 +67,32 @@ The account can run out mid-flow. Catch it specifically — a generic catch hide
 a billing problem as a delivery problem.
 
 ```php
-use Nugsoft\SignalBridge\Exceptions\InsufficientBalanceException;
-use Nugsoft\SignalBridge\Exceptions\RateLimitedException;
-use Nugsoft\SignalBridge\Exceptions\ValidationException;
+use Nugsoft\SignalBridge\Exceptions\InsufficientBalanceException;   // 402
+use Nugsoft\SignalBridge\Exceptions\InsufficientPermissionsException; // 403, token ability
+use Nugsoft\SignalBridge\Exceptions\RateLimitedException;           // 429
+use Nugsoft\SignalBridge\Exceptions\UnauthorizedException;          // 401
+use Nugsoft\SignalBridge\Exceptions\ValidationException;            // 422
 ```
 
 `RateLimitedException` (429) is per-client and per-minute: back off, do not retry
 in a tight loop.
+
+### Token abilities
+
+The gateway enforces what a token may do. A token created without a selection
+gets `*` and reaches everything; a narrower one raises
+`InsufficientPermissionsException` elsewhere.
+
+| Ability | Needed by |
+|---------|-----------|
+| `sms:send` | `sms()->send()`, `sms()->sendBatch()` |
+| `sms:read` | `sms()->status()`, `sms()->messages()` |
+| `balance:read` | `getBalance()`, `getBalanceSummary()`, `getTransactions()` |
+| `webhooks:read` / `webhooks:write` | reading / changing webhooks |
+| `export:read` | `exportMessages()`, `exportTransactions()` |
+
+WhatsApp and mobile money abilities cannot be granted yet, so those two channels
+need a full-access (`*`) token.
 
 ### Delivery status
 
@@ -84,13 +123,46 @@ abort_unless(WebhookSignature::verifyRequest($request, $secret), 403);
 ```
 
 Valid events are `message.sent`, `message.delivered`, `message.failed`,
-`message.permanently_failed` and `*`. Anything else is rejected with a 422.
+`message.permanently_failed` and `*`. Anything else is rejected with a 422. The
+signing secret is returned once, when the webhook is created.
 
 ### Bulk sending
 
 `sendBatch()` takes up to 100 messages per call and returns a `message_id` per
 recipient — keep them to reconcile later with `messages(['ids' => ...])`. Do not
 loop `send()` for bulk.
+
+A batch stops at the first insufficient balance, so a partial batch is normal:
+read `successful`, `failed` and the per-message results rather than assuming all
+or nothing.
+
+### Balances
+
+`getBalance()` returns the resource under `data`, and reading one never creates
+one — a currency with nothing stored reads as zero. Currency must be a
+three-letter code.
+
+```php
+$balance = SignalBridge::getBalance('UGX')['data'];
+$balance['available_balance'];   // balance + credit limit
+$balance['segment_price'];       // pass to estimateCost()
+```
+
+Clients cannot credit themselves. Top-ups are an administrator action.
+
+### WhatsApp and mobile money
+
+```php
+SignalBridge::whatsapp()->send('256700000000', 'Your order has shipped');
+SignalBridge::mobileMoney()->initiate('256700000000', 15000, 'UGX', ['reference' => 'INV-1', 'note' => 'Invoice']);
+```
+
+Mobile money reads `reference` and `note` (the text shown to the payer) only.
+Poll `mobileMoney()->verify($transactionId)` for the result.
+
+Avoid `whatsapp()->sendTemplate()` for now: the gateway does not yet deliver
+template sends as templates, so the message goes out empty and ends up
+permanently failed. Use `whatsapp()->send()` within the 24-hour window.
 
 ### Not available
 
