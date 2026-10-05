@@ -33,7 +33,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up PHP ${{ matrix.php }}
         uses: shivammathur/setup-php@v2
@@ -51,9 +51,12 @@ jobs:
           composer update --prefer-dist --no-interaction --no-progress
 
       - name: Show versions
+        # Read the installed versions from Composer's own metadata.
+        # `composer show illuminate/support` fails here: the framework replaces
+        # that package rather than installing it separately.
         run: |
           php -v | head -1
-          composer show illuminate/support | grep -i versions
+          php -r 'require "vendor/autoload.php"; printf("laravel/framework %s | orchestra/testbench %s\n", \Composer\InstalledVersions::getPrettyVersion("laravel/framework"), \Composer\InstalledVersions::getPrettyVersion("orchestra/testbench"));'
 
       - name: Run tests
         # Http::fake() in every test. A test that reaches the real gateway sends
