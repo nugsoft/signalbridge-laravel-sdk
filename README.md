@@ -38,10 +38,25 @@ covering the things that are easy to get expensively wrong — sending real
 messages from a test suite, hand-rolling segment costs, skipping webhook
 signature verification.
 
-If your project uses [Laravel Boost](https://github.com/laravel/boost), it is
-merged into your `CLAUDE.md` and equivalents automatically when you run
-`php artisan boost:install`. Otherwise, point your agent at the file or copy it
-into your own instructions.
+If your project uses [Laravel Boost](https://github.com/laravel/boost), Boost
+finds it automatically — it scans installed packages for
+`resources/boost/guidelines/` — and `php artisan boost:install` offers
+`nugsoft/signalbridge-laravel-sdk` among the third-party guidelines, merging the
+ones you pick into your `CLAUDE.md`, `.github/copilot-instructions.md` and
+`.junie/guidelines.md`.
+
+If the guidance does not appear, check your `boost.json`: the `guidelines` key
+records your selection and acts as an allow-list once it exists, so a
+`"guidelines": []` left by an earlier install excludes every third-party package.
+
+Without Boost, one line in your `CLAUDE.md` (or `AGENTS.md`) pulls it in:
+
+```md
+@vendor/nugsoft/signalbridge-laravel-sdk/resources/boost/guidelines/core.md
+```
+
+For other agents, copy the file's contents into whatever instructions file they
+read. See [AGENTS.md](AGENTS.md) for the details.
 
 ## Requirements
 
