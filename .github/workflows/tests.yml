@@ -1,0 +1,72 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push supersedes an in-flight run on the same ref.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: PHP ${{ matrix.php }} / Laravel ${{ matrix.laravel }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      # Testbench pins the framework version, so one constraint per row is
+      # enough. Spelled out rather than a full product because the support
+      # windows only overlap for some pairs: Laravel 12 needs PHP 8.2+, Laravel
+      # 13 needs 8.3+.
+      #
+      # Laravel 10 and 11 are deliberately absent. Every one of their releases
+      # now carries a security advisory, and Composer refuses to install an
+      # advised package by default, so those rows cannot pass however they are
+      # written — see composer's policy.advisories. composer.json still allows
+      # ^10|^11; narrowing that is a support decision, not a CI one.
+      matrix:
+        include:
+          - { php: "8.2", laravel: "12", testbench: "^10.0" }
+          - { php: "8.3", laravel: "12", testbench: "^10.0" }
+          - { php: "8.4", laravel: "12", testbench: "^10.0" }
+          - { php: "8.3", laravel: "13", testbench: "^11.0" }
+          - { php: "8.4", laravel: "13", testbench: "^11.0" }
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up PHP ${{ matrix.php }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+
+      - name: Validate composer.json
+        run: composer validate --strict
+
+      - name: Install dependencies
+        run: |
+          composer require --dev "orchestra/testbench:${{ matrix.testbench }}" \
+            --no-interaction --no-update
+          composer update --prefer-dist --no-interaction --no-progress
+
+      - name: Show versions
+        # Read the installed versions from Composer's own metadata.
+        # `composer show illuminate/support` fails here: the framework replaces
+        # that package rather than installing it separately.
+        run: |
+          php -v | head -1
+          php -r 'require "vendor/autoload.php"; printf("laravel/framework %s | orchestra/testbench %s\n", \Composer\InstalledVersions::getPrettyVersion("laravel/framework"), \Composer\InstalledVersions::getPrettyVersion("orchestra/testbench"));'
+
+      - name: Run tests
+        # Http::fake() in every test. A test that reaches the real gateway sends
+        # a real SMS and bills the account, so no token is configured here.
+        run: vendor/bin/phpunit
