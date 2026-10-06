@@ -101,7 +101,7 @@ class SignalBridgeClient implements SignalBridgeClientInterface
    *
    * @param  string  $recipient  Phone number (e.g., '256700000000')
    * @param  string  $message  Message content (max 1000 chars)
-   * @param  array  $options  Optional parameters: metadata, is_test, sender_id, scheduled_at
+   * @param  array  $options  Optional parameters: metadata, is_test (a label only — still sent and charged), sender_id (ignored: the gateway always sends as NUGSOFT), scheduled_at
    * @return array Response data
    *
    * @throws ValidationException
@@ -155,7 +155,7 @@ class SignalBridgeClient implements SignalBridgeClientInterface
    * Send batch SMS messages
    *
    * @param  array  $messages  Array of message objects, each with 'recipient' and 'message' keys
-   * @param  array  $options  Optional parameters: is_test, sender_id
+   * @param  array  $options  Optional parameters: is_test (a label only — still sent and charged), sender_id (ignored: the gateway always sends as NUGSOFT)
    * @return array Response data
    *
    * @throws ValidationException

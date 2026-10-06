@@ -46,9 +46,9 @@ return [
     | Default Sender ID
     |--------------------------------------------------------------------------
     |
-    | Sender ID shown to recipients. Maximum 11 characters.
-    | Must be registered with your SMS vendor.
-    | Can be overridden per message via the 'sender_id' option.
+    | DEPRECATED — has no effect. The gateway sends every message under its
+    | own registered sender ID (NUGSOFT) and ignores any sender_id it is
+    | given. Kept so published config files do not break.
     |
     */
 

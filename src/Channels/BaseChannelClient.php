@@ -69,7 +69,14 @@ abstract class BaseChannelClient
       403 => str_contains(strtolower($message), 'permission') || str_contains(strtolower($message), 'role')
         ? throw new InsufficientPermissionsException($message)
         : throw new NoClientException($message),
-      404 => throw new SignalBridgeException('API endpoint not found. Verify SIGNALBRIDGE_URL configuration.', $status, $data),
+      // A JSON 404 is SignalBridge answering — usually a message or webhook
+      // that does not exist. Only a 404 that did not come from the gateway
+      // (no JSON message) points at a wrong base URL.
+      404 => throw new SignalBridgeException(
+        isset($data['message']) ? $message : 'API endpoint not found. Verify SIGNALBRIDGE_URL configuration.',
+        $status,
+        $data
+      ),
       422 => throw new ValidationException($message, $data['errors'] ?? [], $data),
       429 => throw new RateLimitedException($message),
       500 => throw new SignalBridgeException('SignalBridge server error. Please try again later.', $status, $data),

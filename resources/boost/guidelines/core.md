@@ -14,8 +14,8 @@ must include the `/api` suffix. Use the `SignalBridge` facade, or inject
 SignalBridge::sms()->send('256700000000', 'Your code is 1234');
 ```
 
-Recipients are international format without a `+` (`256700000000`). Sender IDs
-are at most 11 characters and must be registered with the vendor. SMS bodies are
+Recipients are international format without a `+` (`256700000000`). Do not set a
+sender ID: the gateway sends everything as `NUGSOFT` and ignores `sender_id`. SMS bodies are
 capped at 1000 characters, WhatsApp at 4096. `scheduled_at` must be in the future.
 
 ### Never retry a send
@@ -46,8 +46,9 @@ run in CI.
 Http::fake(['*' => Http::response(['success' => true, 'data' => ['message_id' => 1]])]);
 ```
 
-For a manual check against the real gateway, pass `is_test => true` and use a
-number you control.
+There is no test mode. `is_test => true` only labels a message — it is still
+delivered and charged. For a manual check against the real gateway, use a number
+you control.
 
 ### Never calculate cost yourself
 

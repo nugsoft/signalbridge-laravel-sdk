@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Http;
 use Nugsoft\SignalBridge\Exceptions\InsufficientBalanceException;
 use Nugsoft\SignalBridge\Exceptions\RateLimitedException;
 use Nugsoft\SignalBridge\Exceptions\ServiceUnavailableException;
+use Nugsoft\SignalBridge\Exceptions\SignalBridgeException;
 use Nugsoft\SignalBridge\Exceptions\UnauthorizedException;
 use Nugsoft\SignalBridge\Exceptions\ValidationException;
 use Nugsoft\SignalBridge\SignalBridgeClient;
@@ -41,6 +42,28 @@ class SmsClientTest extends TestCase
 
         $this->assertSame('delivered', $result['data']['status']);
         Http::assertSent(fn ($r) => str_starts_with($r->url(), 'https://gateway.test/api/sms/messages/7'));
+    }
+
+    #[Test]
+    public function a_missing_message_reports_what_the_gateway_said(): void
+    {
+        Http::fake(['*' => Http::response(['success' => false, 'message' => 'Message not found.'], 404)]);
+
+        $this->expectException(SignalBridgeException::class);
+        $this->expectExceptionMessage('Message not found.');
+
+        $this->client()->sms()->status(999);
+    }
+
+    #[Test]
+    public function a_404_that_is_not_from_the_gateway_points_at_the_base_url(): void
+    {
+        Http::fake(['*' => Http::response('<html>Not Found</html>', 404)]);
+
+        $this->expectException(SignalBridgeException::class);
+        $this->expectExceptionMessageMatches('/Verify SIGNALBRIDGE_URL/');
+
+        $this->client()->sms()->status(999);
     }
 
     #[Test]

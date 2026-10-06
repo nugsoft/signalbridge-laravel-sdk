@@ -5,12 +5,23 @@ All notable changes to `signalbridge-laravel-sdk` will be documented in this fil
 ## [Unreleased]
 
 ### Changed
+- **`sender_id` and `SIGNALBRIDGE_SENDER_ID` no longer have any effect.** The gateway now sends every message
+  as `NUGSOFT`, the only sender ID registered with its vendors, and ignores any
+  `sender_id` it is given. The option is still accepted so existing calls keep
+  working. A client-chosen sender ID the vendor had withdrawn left every message
+  refused with "sender id not assigned".
+- Documented that `is_test` is only a label: the message is still delivered and
+  charged. It was described as a test mode.
 - **Token abilities are now enforced by the gateway.** A token scoped to, say,
   `sms:send` is refused elsewhere with a 403, which this SDK raises as
   `InsufficientPermissionsException`. Tokens created with `*` — the default — are
   unaffected. See "Token abilities" in the README.
 
 ### Fixed
+- A 404 for something that does not exist — `status()` on an unknown message,
+  a deleted webhook — reported "API endpoint not found" and pointed at the base
+  URL. The gateway's own message is now passed through; the base-URL hint is
+  kept for a 404 that did not come from the gateway.
 - `mobileMoney()->initiate()` now sends `note`, the only descriptive field the
   gateway reads, and accepts `description` as an alias for it. `metadata` and
   `callback_url` were being sent and silently dropped by the API, so they are no
