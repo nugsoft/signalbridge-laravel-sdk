@@ -13,7 +13,7 @@ class SmsClient extends BaseChannelClient
    *
    * @param  string  $recipient  Phone number in E.164 format (e.g. '256700000000')
    * @param  string  $message    Message text (max 1000 characters)
-   * @param  array   $options    Optional: metadata, is_test, sender_id, scheduled_at
+   * @param  array   $options    Optional: metadata, is_test (a label only — still sent and charged), sender_id (ignored: the gateway always sends as NUGSOFT), scheduled_at
    */
   public function send(string $recipient, string $message, array $options = []): array
   {
@@ -58,7 +58,7 @@ class SmsClient extends BaseChannelClient
    * Send multiple SMS messages in a single batch (up to 100 messages).
    *
    * @param  array  $messages  Array of ['recipient' => '...', 'message' => '...', 'metadata' => [...]]
-   * @param  array  $options   Optional: is_test, sender_id
+   * @param  array  $options   Optional: is_test (a label only — still sent and charged), sender_id (ignored: the gateway always sends as NUGSOFT)
    */
   public function sendBatch(array $messages, array $options = []): array
   {

@@ -12,8 +12,8 @@ Send SMS, WhatsApp messages, and initiate Mobile Money transactions through a si
 | Channel | Status | Methods |
 |---|---|---|
 | **SMS** | ✅ Available | `send()`, `sendBatch()`, `status()`, `messages()`, `calculateSegments()`, `estimateCost()` |
-| **WhatsApp** | ✅ Available | `send()`, `sendTemplate()` |
-| **Mobile Money** | ✅ Available | `initiate()`, `verify()` |
+| **WhatsApp** | ⚠️ Unreleased on the gateway | `send()`, `sendTemplate()` |
+| **Mobile Money** | ⚠️ Unreleased on the gateway | `initiate()`, `verify()` |
 | **Mobile Money payouts** | 🔜 Planned | `disburse()` — the gateway exposes no disbursement endpoint yet |
 | **USSD** | 🔜 Planned | `push()`, `session()`, `respond()` |
 
@@ -168,9 +168,8 @@ $result = SignalBridge::sms()->send(
     recipient: '256700000000',
     message: 'Your OTP is 123456',
     options: [
-        'sender_id'    => 'MyApp',           // Optional
         'metadata'     => ['user_id' => 42], // Optional: stored for your records
-        'is_test'      => false,             // Optional: test mode (no charge)
+        'is_test'      => false,             // Optional: a label only — still sent and charged
         'scheduled_at' => '2026-06-01T09:00:00Z', // Optional: ISO 8601
     ]
 );
@@ -700,7 +699,6 @@ return [
     'url'               => env('SIGNALBRIDGE_URL', 'https://signal-bridge.nugsoftapps.net/api'),
     'token'             => env('SIGNALBRIDGE_TOKEN'),
     'timeout'           => env('SIGNALBRIDGE_TIMEOUT', 30),
-    'default_sender_id' => env('SIGNALBRIDGE_SENDER_ID'),
     'logging'           => env('SIGNALBRIDGE_LOGGING', true),
 ];
 ```
@@ -710,7 +708,7 @@ return [
 | `SIGNALBRIDGE_TOKEN` | ✅ | — | API authentication token |
 | `SIGNALBRIDGE_URL` | ❌ | Production URL | API base URL |
 | `SIGNALBRIDGE_TIMEOUT` | ❌ | `30` | HTTP request timeout (seconds) |
-| `SIGNALBRIDGE_SENDER_ID` | ❌ | — | Default SMS sender ID (max 11 chars) |
+| `SIGNALBRIDGE_SENDER_ID` | ❌ | — | **Deprecated, has no effect.** The gateway sends every message as `NUGSOFT` |
 | `SIGNALBRIDGE_LOGGING` | ❌ | `true` | Log API errors to Laravel log |
 
 **Laravel compatibility:** 10, 11, 12, 13
