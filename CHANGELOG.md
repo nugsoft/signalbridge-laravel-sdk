@@ -4,7 +4,42 @@ All notable changes to `signalbridge-laravel-sdk` will be documented in this fil
 
 ## [Unreleased]
 
+### Added
+- **WhatsApp, fully.** `sendTemplate()` now takes the template's variables as a
+  plain list, with `header` for templates that start with a document, image or
+  video, and `flow` data for a template's Flow button. New: `sendFlow()`;
+  `listTemplates()`, `getTemplate()`, `createTemplate()`, `deleteTemplate()`;
+  `listFlows()`, `getFlow()`, `createFlow()`, `updateFlow()`, `publishFlow()`,
+  `regenerateFlowSecret()`, `deleteFlow()`; `received()`, `getReceived()` and
+  `downloadMedia()` for what customers send you. SignalBridge holds every
+  WhatsApp credential and does WhatsApp's Flow encryption, so none of this
+  needs Meta access. Flow data calls forwarded to your endpoint verify with the
+  existing webhook signature helper.
+- **`SmsClient::status(int $messageId, bool $refresh = false)`** — read one
+  message's delivery status. `$refresh` asks the vendor live.
+- **`SmsClient::messages(array $filters = [])`** — list messages with a status
+  breakdown. Pass `ids` to reconcile a batch in a single call; `summary` counts
+  the whole filtered set rather than the current page.
+- **`SignalBridgeClient::getMessageStatus()` / `getMessages()`** — the same, on
+  the main client.
+- **`Support\WebhookSignature`** — verify inbound webhooks. `verifyRequest()`
+  checks the raw body with `hash_equals`, which is the part that is easy to get
+  wrong by hand and fails silently when you do.
+- **`SignalBridgeClient::verifyWebhookSignature()`** — convenience wrapper.
+- A test suite. The package previously declared a `Tests\` autoload namespace
+  and dev dependencies on phpunit, testbench and mockery, but shipped no tests.
+- **Agent guidance at `resources/boost/guidelines/core.md`.** Laravel Boost
+  discovers guidelines shipped by packages at that path and merges them into the
+  consuming project's `CLAUDE.md`, `.github/copilot-instructions.md` and
+  `.junie/guidelines.md`, so an agent working in a project that installs this SDK
+  knows the rules that cost money to get wrong — chiefly that an unmocked test
+  sends a real SMS. `AGENTS.md` points at the same file rather than copying it.
+
 ### Changed
+- `sendTemplate()`'s third argument is now the variables
+  (`['John', 'UGX 50,000']`), not Meta's `components` structure — the gateway
+  builds that. Passing the old structure fails with an explanation. WhatsApp
+  was unreleased on the gateway, so no working integration relied on it.
 - **`sender_id` and `SIGNALBRIDGE_SENDER_ID` no longer have any effect.** The gateway now sends every message
   as `NUGSOFT`, the only sender ID registered with its vendors, and ignores any
   `sender_id` it is given. The option is still accepted so existing calls keep
@@ -16,6 +51,17 @@ All notable changes to `signalbridge-laravel-sdk` will be documented in this fil
   `sms:send` is refused elsewhere with a 403, which this SDK raises as
   `InsufficientPermissionsException`. Tokens created with `*` — the default — are
   unaffected. See "Token abilities" in the README.
+- **`MobileMoneyClient::disburse()` now throws `ServiceUnavailableException`
+  immediately.** The gateway exposes no `/mobile-money/disburse` endpoint, so
+  the call used to 404 and be reported as "API endpoint not found. Verify
+  SIGNALBRIDGE_URL configuration" — which points at the wrong problem entirely.
+  Collecting payments with `initiate()` is unaffected.
+- README no longer lists `payment.completed` and `payment.failed` as webhook
+  events. The gateway rejects them with a 422 and has never dispatched them; the
+  documented example would have failed.
+- `createWebhook()`'s `$isActive` argument now takes effect. The gateway ignored
+  `is_active` on create, so asking for a paused webhook produced a live one.
+  Requires a gateway with that fix deployed.
 
 ### Fixed
 - A 404 for something that does not exist — `status()` on an unknown message,
@@ -40,40 +86,6 @@ All notable changes to `signalbridge-laravel-sdk` will be documented in this fil
 - Unicode length is counted in UTF-16 code units, so only characters outside the
   Basic Multilingual Plane take two. Three-byte sequences such as CJK were
   previously counted as two.
-
-### Added
-- **`SmsClient::status(int $messageId, bool $refresh = false)`** — read one
-  message's delivery status. `$refresh` asks the vendor live.
-- **`SmsClient::messages(array $filters = [])`** — list messages with a status
-  breakdown. Pass `ids` to reconcile a batch in a single call; `summary` counts
-  the whole filtered set rather than the current page.
-- **`SignalBridgeClient::getMessageStatus()` / `getMessages()`** — the same, on
-  the main client.
-- **`Support\WebhookSignature`** — verify inbound webhooks. `verifyRequest()`
-  checks the raw body with `hash_equals`, which is the part that is easy to get
-  wrong by hand and fails silently when you do.
-- **`SignalBridgeClient::verifyWebhookSignature()`** — convenience wrapper.
-- A test suite. The package previously declared a `Tests\` autoload namespace
-  and dev dependencies on phpunit, testbench and mockery, but shipped no tests.
-- **Agent guidance at `resources/boost/guidelines/core.md`.** Laravel Boost
-  discovers guidelines shipped by packages at that path and merges them into the
-  consuming project's `CLAUDE.md`, `.github/copilot-instructions.md` and
-  `.junie/guidelines.md`, so an agent working in a project that installs this SDK
-  knows the rules that cost money to get wrong — chiefly that an unmocked test
-  sends a real SMS. `AGENTS.md` points at the same file rather than copying it.
-
-### Changed
-- **`MobileMoneyClient::disburse()` now throws `ServiceUnavailableException`
-  immediately.** The gateway exposes no `/mobile-money/disburse` endpoint, so
-  the call used to 404 and be reported as "API endpoint not found. Verify
-  SIGNALBRIDGE_URL configuration" — which points at the wrong problem entirely.
-  Collecting payments with `initiate()` is unaffected.
-- README no longer lists `payment.completed` and `payment.failed` as webhook
-  events. The gateway rejects them with a 422 and has never dispatched them; the
-  documented example would have failed.
-- `createWebhook()`'s `$isActive` argument now takes effect. The gateway ignored
-  `is_active` on create, so asking for a paused webhook produced a live one.
-  Requires a gateway with that fix deployed.
 
 ## [2.0.0] - 2026-04-23
 

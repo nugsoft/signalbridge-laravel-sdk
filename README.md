@@ -12,7 +12,7 @@ Send SMS, WhatsApp messages, and initiate Mobile Money transactions through a si
 | Channel | Status | Methods |
 |---|---|---|
 | **SMS** | ✅ Available | `send()`, `sendBatch()`, `status()`, `messages()`, `calculateSegments()`, `estimateCost()` |
-| **WhatsApp** | ⚠️ Unreleased on the gateway | `send()`, `sendTemplate()` |
+| **WhatsApp** | ✅ Available | `sendTemplate()`, `send()`, `sendFlow()`, templates, Flows, received messages |
 | **Mobile Money** | ⚠️ Unreleased on the gateway | `initiate()`, `verify()` |
 | **Mobile Money payouts** | 🔜 Planned | `disburse()` — the gateway exposes no disbursement endpoint yet |
 | **USSD** | 🔜 Planned | `push()`, `session()`, `respond()` |
@@ -116,7 +116,7 @@ A call made with a token that lacks the ability throws
 `InsufficientPermissionsException`; the response names the missing ability.
 Listing and revoking your own tokens is always allowed.
 
-> `whatsapp:send`, `mobile-money:send` and `mobile-money:read` are not issuable at the moment: the WhatsApp and mobile money channels are unreleased, so reaching either needs a full-access (`*`) token.
+> `mobile-money:send` and `mobile-money:read` are not issuable at the moment: the mobile money channel is unreleased, so reaching it needs a full-access (`*`) token. The WhatsApp abilities are `whatsapp:send`, `whatsapp:templates`, `whatsapp:flows` and `whatsapp:read`.
 
 
 ---
@@ -132,7 +132,7 @@ use Nugsoft\SignalBridge\Facades\SignalBridge;
 SignalBridge::sms()->send('256700000000', 'Hello from SignalBridge!');
 
 // WhatsApp
-SignalBridge::whatsapp()->send('256700000000', 'Hello on WhatsApp!');
+SignalBridge::whatsapp()->sendTemplate('256700000000', 'fee_reminder', ['John', 'UGX 50,000']);
 
 // Mobile Money — collect payment
 SignalBridge::mobileMoney()->initiate('256700000000', 5000);
@@ -280,37 +280,117 @@ where the estimate and the charge disagree, that is a bug — please report it.
 
 ## WhatsApp
 
-### Send a Plain Message
+WhatsApp only lets a business **start** a conversation with a **template** it has
+approved. So: submit a template once, wait for WhatsApp's approval, then send it as
+often as you like. Free text and Flows are delivered only within **24 hours of the
+person's last message to you**. You never need Meta credentials — SignalBridge holds
+them, and handles all of WhatsApp's encryption.
+
+Your token needs `whatsapp:send`, plus `whatsapp:templates`, `whatsapp:flows` and
+`whatsapp:read` for the matching methods (or a full-access `*` token).
+
+### Submit a template
 
 ```php
-SignalBridge::whatsapp()->send(
-    recipient: '256700000000',
-    message: 'Your order #1234 has been shipped.',
-    options: ['metadata' => ['order_id' => 1234]]
-);
+SignalBridge::whatsapp()->createTemplate([
+    'name' => 'fee_reminder',
+    'category' => 'utility',            // utility | marketing | authentication
+    'body' => 'Hello {{1}}, your fee balance is {{2}}. Please pay by Friday.',
+    'examples' => ['John', 'UGX 50,000'],
+    'buttons' => [['type' => 'url', 'text' => 'Pay now', 'url' => 'https://pay.example.com']],
+]);
 ```
 
-### Send a Template Message
+Review usually takes minutes. You get a `template.approved` (or `template.rejected`)
+webhook, or check with `listTemplates('approved')` / `getTemplate($id, refresh: true)`.
 
-Templates must be pre-approved in [Meta Business Manager](https://business.facebook.com).
+### Send a template
 
 ```php
-SignalBridge::whatsapp()->sendTemplate(
-    recipient: '256700000000',
-    templateName: 'order_confirmation',
-    components: [
-        [
-            'type' => 'body',
-            'parameters' => [
-                ['type' => 'text', 'text' => 'Alice'],
-                ['type' => 'text', 'text' => '#ORD-9821'],
-                ['type' => 'text', 'text' => 'UGX 45,000'],
-            ],
-        ],
-    ],
-    options: ['language' => 'en_US']
-);
+SignalBridge::whatsapp()->sendTemplate('256700000000', 'fee_reminder', ['John', 'UGX 50,000']);
+
+// A template that starts with a document or image takes the file as a link
+SignalBridge::whatsapp()->sendTemplate('256700000000', 'weekly_report', ['Kampala branch'], [
+    'header' => ['type' => 'document', 'url' => 'https://files.example.com/report.pdf', 'filename' => 'report.pdf'],
+]);
+
+// A one-time code: an authentication template takes the code as its one variable
+SignalBridge::whatsapp()->sendTemplate('256700000000', 'login_code', ['482913']);
 ```
+
+> `sendTemplate()` takes the variables as a plain list. The Meta `components`
+> structure older versions asked for is built by SignalBridge.
+
+### Free text (within 24 hours of their last message)
+
+```php
+SignalBridge::whatsapp()->send('256700000000', 'Thanks — we have received your payment.');
+```
+
+### Flows
+
+Flows are forms customers fill in inside WhatsApp — bookings, registrations,
+surveys. Design one in WhatsApp's Flow Builder, export its JSON, and:
+
+```php
+$flow = SignalBridge::whatsapp()->createFlow([
+    'name' => 'spa_booking',
+    'categories' => ['appointment_booking'],
+    'flow_json' => $flowJson,                                  // array or string
+    'endpoint_url' => 'https://your-app.example.com/whatsapp/flow', // only if it fetches live data
+]);
+$secret = $flow['endpoint_secret'];   // shown once — keep it to verify calls
+
+SignalBridge::whatsapp()->publishFlow($flow['data']['id']);
+
+// Within 24 hours of their last message, as an interactive message:
+SignalBridge::whatsapp()->sendFlow('256700000000', 'spa_booking', 'Book your next session', 'Book now');
+
+// Or to start a conversation, through a template's Flow button:
+SignalBridge::whatsapp()->sendTemplate('256700000000', 'booking_invite', [], ['flow' => ['data' => ['offer' => 'weekend']]]);
+```
+
+The customer's answers arrive as a `flow.completed` webhook.
+
+**If your Flow fetches live data**, WhatsApp calls a data endpoint while the customer
+fills it in. Those calls are encrypted; SignalBridge decrypts them and posts them to
+your `endpoint_url` as plain JSON. Reply with the next screen as plain JSON within a
+few seconds — SignalBridge encrypts it for WhatsApp:
+
+```php
+Route::post('/whatsapp/flow', function (Request $request) {
+    abort_unless(WebhookSignature::verifyRequest($request, config('services.signalbridge.flow_secret')), 401);
+
+    // $request: event, flow, action (INIT | data_exchange | BACK), screen, data, flow_token, message_id, recipient
+    return [
+        'screen' => 'SLOTS',
+        'data' => ['slots' => ['10:00', '11:00', '14:00']],
+    ];
+});
+```
+
+### Messages customers send you
+
+Replies to your messages, completed Flows and new messages from customers you last
+contacted arrive as `message.received` and `flow.completed` webhooks. You can also ask:
+
+```php
+SignalBridge::whatsapp()->received(['since' => now()->subHour()->toIso8601String()]);
+
+// The photo, document or voice note a customer sent:
+$bytes = SignalBridge::whatsapp()->downloadMedia($receivedMessageId);
+```
+
+### WhatsApp webhook events
+
+| Event | When |
+|---|---|
+| `message.sent` / `message.delivered` / `message.read` / `message.failed` | Your message's progress (`failed` is refunded) |
+| `message.received` | A customer messaged you |
+| `flow.completed` | A customer submitted your Flow — the answers are in `content.answers` |
+| `template.approved` / `template.rejected` / `template.paused` / `template.disabled` | WhatsApp's verdict on your template |
+
+Template and Flow events are not in a webhook's default subscription — add them, or subscribe to `*`.
 
 ---
 
@@ -552,13 +632,7 @@ public function confirmOrder(Order $order): void
     SignalBridge::whatsapp()->sendTemplate(
         recipient: $order->customer_phone,
         templateName: 'order_confirmation',
-        components: [
-            ['type' => 'body', 'parameters' => [
-                ['type' => 'text', 'text' => $order->customer_name],
-                ['type' => 'text', 'text' => $order->reference],
-                ['type' => 'text', 'text' => number_format($order->total) . ' UGX'],
-            ]],
-        ]
+        variables: [$order->customer_name, $order->reference, number_format($order->total).' UGX'],
     );
 }
 ```
