@@ -4,6 +4,12 @@ All notable changes to `signalbridge-laravel-sdk` will be documented in this fil
 
 ## [Unreleased]
 
+### Changed
+- **Guzzle 8 is allowed.** `guzzlehttp/guzzle` is now `^7.0|^8.0`. The SDK
+  sends through Laravel's HTTP client and never calls Guzzle directly, so an
+  application already on Guzzle 8 — Laravel 13 accepts either — can install it
+  without downgrading. The suite passes on Guzzle 8.2 with Laravel 13.
+
 ### Added
 - **WhatsApp, fully.** `sendTemplate()` now takes the template's variables as a
   plain list, with `header` for templates that start with a document, image or
