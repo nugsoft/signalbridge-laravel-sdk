@@ -14,17 +14,34 @@ so this file is found automatically. Running
 
     php artisan boost:install
 
-offers `nugsoft/signalbridge-laravel-sdk` among the third-party guidelines and
-merges the ones you pick into the project's `CLAUDE.md`,
+offers `nugsoft/signalbridge-laravel-sdk` among the third-party packages and
+merges the guidance of the ones you pick into the project's agent files. Boost 2
+writes `CLAUDE.md` and `AGENTS.md`; Boost 1 wrote `CLAUDE.md`,
 `.github/copilot-instructions.md` and `.junie/guidelines.md`.
 
-One catch worth knowing: the selection is recorded in the project's `boost.json`
-under `guidelines`, and once that key exists it acts as an allow-list. If
-SignalBridge guidance is missing after an install, check that
-`nugsoft/signalbridge-laravel-sdk` is listed there — a `"guidelines": []` from an
-earlier install silently excludes every third-party package. Re-run
-`boost:install` and select it, or add the package name by hand and run
-`php artisan boost:update`.
+One catch worth knowing: `boost:update` includes only the packages your
+selection recorded in the project's `boost.json`, so a package left out of it is
+silently dropped.
+
+- **Boost 2** keeps the selection under `packages`, and `guidelines` is only
+  `true` or `false`:
+
+  ```json
+  {
+      "agents": ["claude_code", "copilot", "junie"],
+      "guidelines": true,
+      "packages": ["nugsoft/signalbridge-laravel-sdk"]
+  }
+  ```
+
+  A `boost.json` written by Boost 1 has no `packages` key. **After upgrading to
+  Boost 2, the SignalBridge guidance disappears at the next `boost:update`**
+  until the package is listed there.
+- **Boost 1** kept the selection under `guidelines`; a `"guidelines": []` from an
+  earlier install excluded every third-party package.
+
+If SignalBridge guidance is missing, re-run `boost:install` and select the
+package, or add it to `boost.json` by hand and run `php artisan boost:update`.
 
 ## Without Boost
 

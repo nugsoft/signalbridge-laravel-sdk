@@ -41,13 +41,16 @@ signature verification.
 If your project uses [Laravel Boost](https://github.com/laravel/boost), Boost
 finds it automatically — it scans installed packages for
 `resources/boost/guidelines/` — and `php artisan boost:install` offers
-`nugsoft/signalbridge-laravel-sdk` among the third-party guidelines, merging the
-ones you pick into your `CLAUDE.md`, `.github/copilot-instructions.md` and
-`.junie/guidelines.md`.
+`nugsoft/signalbridge-laravel-sdk` among the third-party packages, merging the
+guidance of the ones you pick into your agent files (`CLAUDE.md` and `AGENTS.md`
+with Boost 2).
 
-If the guidance does not appear, check your `boost.json`: the `guidelines` key
-records your selection and acts as an allow-list once it exists, so a
-`"guidelines": []` left by an earlier install excludes every third-party package.
+If the guidance does not appear, check your `boost.json`: `boost:update` includes
+only the packages listed there. Boost 2 lists them under `packages`, which a
+`boost.json` from Boost 1 does not have, so after upgrading to Boost 2 add
+`"packages": ["nugsoft/signalbridge-laravel-sdk"]` and run
+`php artisan boost:update`. Under Boost 1, a `"guidelines": []` left by an earlier
+install excludes every third-party package.
 
 Without Boost, one line in your `CLAUDE.md` (or `AGENTS.md`) pulls it in:
 
