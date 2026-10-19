@@ -5,6 +5,11 @@ All notable changes to `signalbridge-laravel-sdk` will be documented in this fil
 ## [Unreleased]
 
 ### Changed
+- **Agent guide.** The Boost guideline (`resources/boost/guidelines/core.md`) now sends agents to the SignalBridge MCP server to
+  read the account and check a send before writing code for it. It also lists
+  the WhatsApp token abilities (they can be granted now), shows how to send a
+  template instead of warning against it, gives every webhook event, and says
+  not to rely on their order: `message.sent` can be skipped.
 - **Guzzle 8 is allowed.** `guzzlehttp/guzzle` is now `^7.0|^8.0`. The SDK
   sends through Laravel's HTTP client and never calls Guzzle directly, so an
   application already on Guzzle 8 — Laravel 13 accepts either — can install it
