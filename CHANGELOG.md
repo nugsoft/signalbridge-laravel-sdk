@@ -5,6 +5,22 @@ All notable changes to `signalbridge-laravel-sdk` will be documented in this fil
 ## [Unreleased]
 
 ### Changed
+- **Boost 2 instructions.** `AGENTS.md` and the README now describe Laravel
+  Boost 2 (the version that brings laravel/mcp 1.x): it writes the guidance into
+  `CLAUDE.md` and `AGENTS.md`, and keeps the package selection under `packages`
+  in `boost.json`. A `boost.json` from Boost 1 has no `packages` key, so after
+  upgrading the SignalBridge guidance is dropped at the next `boost:update`
+  until the package is listed there. The Boost 1 instructions are kept.
+- **Agent guide: setting up through the MCP server.** The guide now covers the
+  server's setup tools: tokens that cannot send, webhooks, WhatsApp templates
+  and Flows. It says which to use for each job, to put a secret they return
+  straight into the product's secret store, to ask the developer before a change
+  that cannot be undone, and not to send a template before WhatsApp approves it.
+- **Agent guide.** The Boost guideline (`resources/boost/guidelines/core.md`) now sends agents to the SignalBridge MCP server to
+  read the account and check a send before writing code for it. It also lists
+  the WhatsApp token abilities (they can be granted now), shows how to send a
+  template instead of warning against it, gives every webhook event, and says
+  not to rely on their order: `message.sent` can be skipped.
 - **Guzzle 8 is allowed.** `guzzlehttp/guzzle` is now `^7.0|^8.0`. The SDK
   sends through Laravel's HTTP client and never calls Guzzle directly, so an
   application already on Guzzle 8 — Laravel 13 accepts either — can install it
