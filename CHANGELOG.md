@@ -4,6 +4,24 @@ All notable changes to `signalbridge-laravel-sdk` will be documented in this fil
 
 ## [Unreleased]
 
+### Added
+- **WhatsApp files, buttons and lists.** `whatsapp()->sendMedia()` sends an
+  image, document, video, audio (a voice note) or sticker from a public https
+  link, with a caption or file name where WhatsApp allows one.
+  `sendButtons()` sends up to 3 reply buttons, keyed by your ids;
+  `sendList()` a list of up to 10 options; `sendLinkButton()` a button that
+  opens a link. Like free text, all are delivered only within 24 hours of the
+  person's last message. A tap arrives as `message.received` with
+  `content.reply_id` (your id), `content.reply_type` and
+  `reply_to_message_id`. The Boost guideline teaches agents to use them. Needs
+  the gateway's media and interactive release.
+
+### Fixed
+- README: the webhook events list named only the four SMS events and said
+  anything else was refused. It now lists every event — `message.read`,
+  `message.received`, `flow.completed` and the template events included — and
+  notes that events can arrive out of order.
+
 ### Changed
 - **Boost 2 instructions.** `AGENTS.md` and the README now describe Laravel
   Boost 2 (the version that brings laravel/mcp 1.x): it writes the guidance into
