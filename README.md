@@ -12,7 +12,7 @@ Send SMS, WhatsApp messages, and initiate Mobile Money transactions through a si
 | Channel | Status | Methods |
 |---|---|---|
 | **SMS** | ✅ Available | `send()`, `sendBatch()`, `status()`, `messages()`, `calculateSegments()`, `estimateCost()` |
-| **WhatsApp** | ✅ Available | `sendTemplate()`, `send()`, `sendFlow()`, templates, Flows, received messages |
+| **WhatsApp** | ✅ Available | `sendTemplate()`, `send()`, `sendMedia()`, `sendButtons()`, `sendList()`, `sendLinkButton()`, `sendFlow()`, templates, Flows, received messages |
 | **Mobile Money** | ⚠️ Unreleased on the gateway | `initiate()`, `verify()` |
 | **Mobile Money payouts** | 🔜 Planned | `disburse()` — the gateway exposes no disbursement endpoint yet |
 | **USSD** | 🔜 Planned | `push()`, `session()`, `respond()` |
@@ -285,8 +285,8 @@ where the estimate and the charge disagree, that is a bug — please report it.
 
 WhatsApp only lets a business **start** a conversation with a **template** it has
 approved. So: submit a template once, wait for WhatsApp's approval, then send it as
-often as you like. Free text and Flows are delivered only within **24 hours of the
-person's last message to you**. You never need Meta credentials — SignalBridge holds
+often as you like. Free text, files, buttons, lists and Flows are delivered only
+within **24 hours of the person's last message to you**. You never need Meta credentials — SignalBridge holds
 them, and handles all of WhatsApp's encryption.
 
 Your token needs `whatsapp:send`, plus `whatsapp:templates`, `whatsapp:flows` and
@@ -329,6 +329,59 @@ SignalBridge::whatsapp()->sendTemplate('256700000000', 'login_code', ['482913'])
 ```php
 SignalBridge::whatsapp()->send('256700000000', 'Thanks — we have received your payment.');
 ```
+
+### Files (within 24 hours of their last message)
+
+An image, document, video, audio (a voice note) or sticker, on its own. WhatsApp
+downloads it from the public https link.
+
+```php
+SignalBridge::whatsapp()->sendMedia('256700000000', 'document', 'https://files.example.com/report.pdf', [
+    'caption' => 'Term 2 report',   // image, video and document only
+    'filename' => 'report.pdf',     // document only
+]);
+
+SignalBridge::whatsapp()->sendMedia('256700000000', 'audio', 'https://files.example.com/note.ogg');
+```
+
+WhatsApp takes JPEG and PNG images up to 5 MB, MP4 video and AAC, MP3, M4A, AMR
+or OGG (Opus) audio up to 16 MB, documents up to 100 MB, and WebP stickers.
+
+### Buttons, lists and link buttons (within 24 hours of their last message)
+
+```php
+// Up to 3 reply buttons. The keys are your ids — a tap comes back with one.
+SignalBridge::whatsapp()->sendButtons('256700000000', 'Your appointment is tomorrow at 10:00. Can you make it?', [
+    'confirm_4821' => 'Confirm',
+    'reschedule_4821' => 'Reschedule',
+], ['header' => 'Acme Clinic', 'footer' => 'Reply by 6pm']);
+
+// A list: up to 10 options behind one button
+SignalBridge::whatsapp()->sendList('256700000000', 'Which branch suits you?', 'Choose a branch', [
+    ['title' => 'Kampala', 'rows' => [
+        ['id' => 'kla_central', 'title' => 'Central', 'description' => 'Open until 8pm'],
+        ['id' => 'kla_ntinda', 'title' => 'Ntinda'],
+    ]],
+]);
+
+// A button that opens a link
+SignalBridge::whatsapp()->sendLinkButton('256700000000', 'Your invoice is ready.', 'Pay now', 'https://pay.example.com/inv/42');
+```
+
+Button titles are up to 20 characters, list option titles 24 and descriptions 72.
+A `header` is text, or for buttons and link buttons an image, video or document
+(`['type' => 'image', 'url' => 'https://…']`); a list takes a text header only.
+
+A tap arrives as a `message.received` webhook with `type` `interactive`, the title
+as `text`, and:
+
+```php
+$request->input('content.reply_type');    // 'button' or 'list'
+$request->input('content.reply_id');      // the id you gave: 'confirm_4821'
+$request->input('reply_to_message_id');   // the message they answered
+```
+
+Act on `reply_id`, not on the title. A link button sends nothing back.
 
 ### Flows
 
@@ -511,9 +564,13 @@ SignalBridge::deleteWebhook($webhookId);
 $new = SignalBridge::regenerateWebhookSecret($webhookId);
 ```
 
-**Available events:** `message.sent`, `message.delivered`, `message.failed`,
-`message.permanently_failed`, and `*` for all of them. Anything else is
-rejected with a 422.
+**Available events:** `message.sent`, `message.delivered`, `message.read`
+(WhatsApp), `message.failed`, `message.permanently_failed`, `message.received`
+and `flow.completed` (WhatsApp), `template.approved`, `template.rejected`,
+`template.paused`, `template.disabled`, and `*` for all of them. Anything else is
+rejected with a 422. A new webhook gets `message.sent`, `message.delivered` and
+`message.failed` unless you choose. Events can arrive out of order, and
+`message.sent` is skipped when the outcome is already known.
 
 `message.permanently_failed` fires when every retry has been exhausted. The
 charge for that message is refunded to your balance at the same time, so you

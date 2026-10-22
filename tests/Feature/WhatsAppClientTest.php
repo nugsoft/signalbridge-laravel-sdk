@@ -147,4 +147,99 @@ class WhatsAppClientTest extends TestCase
         $this->assertTrue(WebhookSignature::verify($body, WebhookSignature::sign($body, 'flow-secret'), 'flow-secret'));
         $this->assertFalse(WebhookSignature::verify($body, WebhookSignature::sign($body, 'other'), 'flow-secret'));
     }
+
+    #[Test]
+    public function it_sends_a_file_on_its_own(): void
+    {
+        Http::fake(['*' => Http::response(['success' => true])]);
+
+        $this->whatsapp()->sendMedia('256700000000', 'document', 'https://files.example.com/report.pdf', [
+            'caption' => 'Term 2 report',
+            'filename' => 'report.pdf',
+        ]);
+
+        Http::assertSent(fn (Request $r) => $r->url() === 'https://gateway.test/api/whatsapp/send'
+            && $r['media'] === ['type' => 'document', 'url' => 'https://files.example.com/report.pdf', 'caption' => 'Term 2 report', 'filename' => 'report.pdf']
+            && ! isset($r['message']));
+    }
+
+    #[Test]
+    public function it_refuses_an_unknown_file_type_or_a_plain_http_link_before_sending(): void
+    {
+        Http::fake();
+
+        foreach ([['gif', 'https://example.com/a.gif'], ['image', 'http://example.com/a.jpg']] as [$type, $url]) {
+            try {
+                $this->whatsapp()->sendMedia('256700000000', $type, $url);
+                $this->fail("{$type} {$url} was not refused");
+            } catch (ValidationException) {
+                // expected
+            }
+        }
+
+        Http::assertNothingSent();
+    }
+
+    #[Test]
+    public function it_sends_reply_buttons_keyed_by_their_ids(): void
+    {
+        Http::fake(['*' => Http::response(['success' => true])]);
+
+        $this->whatsapp()->sendButtons('256700000000', 'Can you make it?', [
+            'confirm_4821' => 'Confirm',
+            'reschedule_4821' => 'Reschedule',
+        ], ['header' => 'Tomorrow, 10:00', 'footer' => 'Acme Clinic']);
+
+        Http::assertSent(fn (Request $r) => $r['interactive'] === [
+            'type' => 'buttons',
+            'body' => 'Can you make it?',
+            'buttons' => [['id' => 'confirm_4821', 'title' => 'Confirm'], ['id' => 'reschedule_4821', 'title' => 'Reschedule']],
+            'header' => ['type' => 'text', 'text' => 'Tomorrow, 10:00'],
+            'footer' => 'Acme Clinic',
+        ]);
+    }
+
+    #[Test]
+    public function it_refuses_more_than_three_buttons_before_sending(): void
+    {
+        Http::fake();
+
+        $this->expectException(ValidationException::class);
+
+        try {
+            $this->whatsapp()->sendButtons('256700000000', 'Pick', ['a' => 'A', 'b' => 'B', 'c' => 'C', 'd' => 'D']);
+        } finally {
+            Http::assertNothingSent();
+        }
+    }
+
+    #[Test]
+    public function it_sends_a_list_and_a_link_button(): void
+    {
+        Http::fake(['*' => Http::response(['success' => true])]);
+
+        $this->whatsapp()->sendList('256700000000', 'Which branch?', 'Choose a branch', [
+            ['title' => 'Kampala', 'rows' => [['id' => 'kla_central', 'title' => 'Central']]],
+        ]);
+        $this->whatsapp()->sendLinkButton('256700000000', 'Your invoice is ready.', 'Pay now', 'https://pay.example.com/inv/42');
+
+        Http::assertSent(fn (Request $r) => ($r['interactive']['type'] ?? null) === 'list'
+            && $r['interactive']['button'] === 'Choose a branch'
+            && $r['interactive']['sections'][0]['rows'][0]['id'] === 'kla_central');
+        Http::assertSent(fn (Request $r) => ($r['interactive'] ?? null) === [
+            'type' => 'cta_url', 'body' => 'Your invoice is ready.', 'button' => 'Pay now', 'url' => 'https://pay.example.com/inv/42',
+        ]);
+    }
+
+    #[Test]
+    public function it_refuses_a_list_of_more_than_ten_options_before_sending(): void
+    {
+        Http::fake();
+
+        $this->expectException(ValidationException::class);
+
+        $this->whatsapp()->sendList('256700000000', 'Pick', 'Open', [
+            ['title' => 'All', 'rows' => array_map(fn ($i) => ['id' => "r{$i}", 'title' => "R{$i}"], range(1, 11))],
+        ]);
+    }
 }

@@ -158,7 +158,7 @@ gets `*` and reaches everything; a narrower one raises
 | `balance:read` | `getBalance()`, `getBalanceSummary()`, `getTransactions()` |
 | `webhooks:read` / `webhooks:write` | reading / changing webhooks |
 | `export:read` | `exportMessages()`, `exportTransactions()` |
-| `whatsapp:send` | `whatsapp()->send()`, `sendTemplate()`, `sendFlow()` |
+| `whatsapp:send` | `whatsapp()->send()`, `sendTemplate()`, `sendMedia()`, `sendButtons()`, `sendList()`, `sendLinkButton()`, `sendFlow()` |
 | `whatsapp:templates` | `whatsapp()->listTemplates()`, `getTemplate()`, `createTemplate()`, `deleteTemplate()` |
 | `whatsapp:flows` | `whatsapp()->listFlows()`, `getFlow()`, `createFlow()`, `updateFlow()`, `publishFlow()`, `regenerateFlowSecret()`, `deleteFlow()` |
 | `whatsapp:read` | `whatsapp()->received()`, `getReceived()`, `downloadMedia()` |
@@ -259,6 +259,37 @@ Meta's components. The template must be approved and not suspended
 (`whatsapp()->listTemplates()` shows its status), and the number of variables must match, or
 the send is refused with a 422 before anything is charged. With the MCP server
 connected, check the request with `validate_whatsapp` first.
+
+Inside the 24-hour window there is more than free text. Use the method for the
+job rather than describing a file or a choice in text:
+
+```php
+$whatsapp = SignalBridge::whatsapp();
+
+// A file WhatsApp downloads from a public https link: image, document, video, audio, sticker
+$whatsapp->sendMedia('256700000000', 'document', 'https://files.example.com/report.pdf', ['caption' => 'Term 2 report', 'filename' => 'report.pdf']);
+
+// Up to 3 reply buttons; the keys are your ids
+$whatsapp->sendButtons('256700000000', 'Can you make it tomorrow at 10:00?', ['confirm_4821' => 'Confirm', 'reschedule_4821' => 'Reschedule']);
+
+// Up to 10 options behind one button
+$whatsapp->sendList('256700000000', 'Which branch?', 'Choose a branch', [['title' => 'Kampala', 'rows' => [['id' => 'kla_central', 'title' => 'Central']]]]);
+
+// A button that opens a link
+$whatsapp->sendLinkButton('256700000000', 'Your invoice is ready.', 'Pay now', 'https://pay.example.com/inv/42');
+```
+
+WhatsApp's limits are checked locally where cheap (3 buttons, 10 options, https
+links) and by the gateway otherwise (20-character button titles, 24-character
+option titles, a caption only on an image, video or document), with a 422 before
+anything is charged. To start a conversation with a file or buttons, use a
+template that has them.
+
+A tap arrives as a `message.received` webhook with `type` `interactive`:
+`content.reply_id` is the id you gave the button or option, `content.reply_type`
+is `button` or `list`, and `reply_to_message_id` is the message answered. Encode
+in the id what the product needs to act (`confirm_4821`), and act on the id, not
+on the title text. A link button sends nothing back.
 
 ### Not available
 

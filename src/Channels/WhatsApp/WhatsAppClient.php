@@ -12,8 +12,9 @@ use Nugsoft\SignalBridge\Exceptions\ValidationException;
  * WhatsApp only lets a business start a conversation with a template it has
  * approved, so the flow is: createTemplate() once, wait for the
  * template.approved webhook, then sendTemplate() as often as needed. Free
- * text (send()) and Flows (sendFlow()) are delivered only within 24 hours of
- * the person's last message. SignalBridge holds every WhatsApp credential and
+ * text (send()), files (sendMedia()), reply buttons, lists and link buttons
+ * (sendButtons(), sendList(), sendLinkButton()) and Flows (sendFlow()) are
+ * delivered only within 24 hours of the person's last message. SignalBridge holds every WhatsApp credential and
  * handles Flow encryption — nothing here needs Meta access.
  */
 class WhatsAppClient extends BaseChannelClient
@@ -99,6 +100,127 @@ class WhatsAppClient extends BaseChannelClient
         'footer' => $options['footer'] ?? null,
         'screen' => $options['screen'] ?? null,
         'data' => $options['data'] ?? null,
+      ], fn ($value) => $value !== null),
+    ] + $this->common($options));
+  }
+
+  /**
+   * The files WhatsApp sends as a message of their own.
+   */
+  public const MEDIA_TYPES = ['image', 'document', 'video', 'audio', 'sticker'];
+
+  /**
+   * Send a file on its own: an image, document, video, audio (a voice note,
+   * say) or sticker. WhatsApp downloads it from the https link, and
+   * delivers it only within 24 hours of the person's last message.
+   *
+   * @param  array<string, mixed>  $options  caption (image, video, document), filename (document), metadata, scheduled_at
+   * @return array<string, mixed>
+   */
+  public function sendMedia(string $recipient, string $type, string $url, array $options = []): array
+  {
+    $this->requireRecipient($recipient);
+
+    if (! in_array($type, self::MEDIA_TYPES, true)) {
+      throw new ValidationException('The media type must be one of: '.implode(', ', self::MEDIA_TYPES));
+    }
+
+    if (! str_starts_with($url, 'https://')) {
+      throw new ValidationException('The media URL must be a public https link WhatsApp can download the file from');
+    }
+
+    return $this->post('whatsapp/send', [
+      'recipient' => $recipient,
+      'media' => array_filter([
+        'type' => $type,
+        'url' => $url,
+        'caption' => $options['caption'] ?? null,
+        'filename' => $options['filename'] ?? null,
+      ], fn ($value) => $value !== null),
+    ] + $this->common($options));
+  }
+
+  /**
+   * Send up to three reply buttons (within 24 hours of the person's last
+   * message). A tap arrives as a message.received webhook whose
+   * content.reply_id is the button's id.
+   *
+   * @param  array<string|int, mixed>  $buttons  ['confirm_4821' => 'Confirm', …], or [['id' => …, 'title' => …], …]
+   * @param  array<string, mixed>  $options  header (text, or ['type' => 'image'|'video'|'document', 'url' => …]), footer, metadata, scheduled_at
+   * @return array<string, mixed>
+   */
+  public function sendButtons(string $recipient, string $body, array $buttons, array $options = []): array
+  {
+    $this->requireRecipient($recipient);
+
+    $buttons = array_map(
+      fn ($title, $id) => is_array($title) ? $title : ['id' => (string) $id, 'title' => (string) $title],
+      $buttons,
+      array_keys($buttons)
+    );
+
+    if ($buttons === [] || count($buttons) > 3) {
+      throw new ValidationException('WhatsApp allows 1 to 3 reply buttons. Use sendList() for more options.');
+    }
+
+    return $this->sendInteractive($recipient, ['type' => 'buttons', 'body' => $body, 'buttons' => $buttons], $options);
+  }
+
+  /**
+   * Send a list: one button that opens up to 10 options, in sections
+   * (within 24 hours of the person's last message). A pick arrives as a
+   * message.received webhook whose content.reply_id is the option's id.
+   *
+   * @param  list<array<string, mixed>>  $sections  [['title' => 'Kampala', 'rows' => [['id' => …, 'title' => …, 'description' => …], …]], …]
+   * @param  array<string, mixed>  $options  header (text only), footer, metadata, scheduled_at
+   * @return array<string, mixed>
+   */
+  public function sendList(string $recipient, string $body, string $button, array $sections, array $options = []): array
+  {
+    $this->requireRecipient($recipient);
+
+    $rows = array_sum(array_map(fn ($section) => count($section['rows'] ?? []), $sections));
+
+    if ($rows === 0 || $rows > 10) {
+      throw new ValidationException('A WhatsApp list has 1 to 10 options across all its sections.');
+    }
+
+    return $this->sendInteractive($recipient, ['type' => 'list', 'body' => $body, 'button' => $button, 'sections' => $sections], $options);
+  }
+
+  /**
+   * Send a button that opens a link, without showing the URL (within 24
+   * hours of the person's last message).
+   *
+   * @param  array<string, mixed>  $options  header (text, or ['type' => 'image'|'video'|'document', 'url' => …]), footer, metadata, scheduled_at
+   * @return array<string, mixed>
+   */
+  public function sendLinkButton(string $recipient, string $body, string $button, string $url, array $options = []): array
+  {
+    $this->requireRecipient($recipient);
+
+    if (! str_starts_with($url, 'https://')) {
+      throw new ValidationException('The link must be an https URL');
+    }
+
+    return $this->sendInteractive($recipient, ['type' => 'cta_url', 'body' => $body, 'button' => $button, 'url' => $url], $options);
+  }
+
+  /**
+   * @param  array<string, mixed>  $interactive
+   * @param  array<string, mixed>  $options
+   * @return array<string, mixed>
+   */
+  protected function sendInteractive(string $recipient, array $interactive, array $options): array
+  {
+    $header = $options['header'] ?? null;
+
+    return $this->post('whatsapp/send', [
+      'recipient' => $recipient,
+      'interactive' => array_filter([
+        ...$interactive,
+        'header' => is_string($header) ? ['type' => 'text', 'text' => $header] : $header,
+        'footer' => $options['footer'] ?? null,
       ], fn ($value) => $value !== null),
     ] + $this->common($options));
   }
