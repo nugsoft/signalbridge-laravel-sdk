@@ -219,6 +219,9 @@ and `flow.completed` (what WhatsApp customers send), `template.approved`,
 `template.rejected`, `template.paused`, `template.disabled`, and `*` for all of
 them. Anything else is rejected with a 422. The signing secret is returned once, when the webhook is created.
 
+A read WhatsApp message keeps the status `delivered`; `read` is not a status.
+Check `read_at` (null until opened) or listen for `message.read`.
+
 Update your records by `message_id` from whichever event arrives; never rely on
 their order:
 

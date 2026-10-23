@@ -253,6 +253,7 @@ $sms = SignalBridge::sms();
 $result = $sms->status(1234);
 $result['data']['status'];        // 'queued' | 'sent' | 'delivered' | 'failed' | 'permanently_failed'
 $result['data']['delivered_at'];  // ISO-8601, or null
+$result['data']['read_at'];       // WhatsApp: when it was opened (ISO-8601), or null
 $result['data']['error_message']; // why it failed, when it did
 
 // Ask the vendor live rather than reading the stored status.
@@ -270,6 +271,9 @@ $sms->status(1234, refresh: true);
 | `permanently_failed` | Every retry exhausted — **your balance was refunded** |
 
 Only `delivered`, `failed` and `permanently_failed` are final.
+
+A WhatsApp message that was opened stays `delivered` — `read` is not a status.
+`read_at` says when, and the `message.read` webhook tells you as it happens.
 
 #### Checking a whole batch
 
