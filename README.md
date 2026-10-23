@@ -13,7 +13,7 @@ Send SMS, WhatsApp messages, and initiate Mobile Money transactions through a si
 |---|---|---|
 | **SMS** | ✅ Available | `send()`, `sendBatch()`, `status()`, `messages()`, `calculateSegments()`, `estimateCost()` |
 | **WhatsApp** | ✅ Available | `sendTemplate()`, `send()`, `sendMedia()`, `sendButtons()`, `sendList()`, `sendLinkButton()`, `sendFlow()`, templates, Flows, received messages |
-| **Mobile Money** | ⚠️ Unreleased on the gateway | `initiate()`, `verify()` |
+| **Mobile Money** | ⚠️ Not switched on yet on the gateway | `initiate()`, `verify()` |
 | **Mobile Money payouts** | 🔜 Planned | `disburse()` — the gateway exposes no disbursement endpoint yet |
 | **USSD** | 🔜 Planned | `push()`, `session()`, `respond()` |
 
@@ -454,36 +454,52 @@ Template and Flow events are not in a webhook's default subscription — add the
 
 ### Collect a Payment (Request-to-Pay)
 
-```php
-$tx = SignalBridge::mobileMoney()->initiate(
-    phone: '256700000000',
-    amount: 15000,
-    currency: 'UGX',
-    options: [
-        'reference' => 'INV-2026-001',
-        // Shown to the payer on their handset. 'description' is accepted as an
-        // alias for it.
-        'note'      => 'Invoice payment',
-    ]
-);
-
-$transactionId = $tx['data']['transaction_id'];
-$status        = $tx['data']['status']; // 'pending'
-```
-
-> The gateway reads `reference` and `note` only. `metadata` and `callback_url`
-> were accepted here previously and silently dropped by the API, so they are no
-> longer sent — listen for the result with `verify()` until mobile money
-> callbacks are available.
-
-### Poll Transaction Status
+> **Not switched on yet.** Until the gateway turns on mobile money collections,
+> `initiate()` throws `ServiceUnavailableException` ("Mobile money collections
+> are not available yet."). The calls below are what to build against.
 
 ```php
-$result = SignalBridge::mobileMoney()->verify('txn-uuid-here');
-// $result['data']['status'] — 'pending' | 'completed' | 'failed'
+use Nugsoft\SignalBridge\Exceptions\ServiceUnavailableException;
+use Nugsoft\SignalBridge\Exceptions\ValidationException;
+
+try {
+    $tx = SignalBridge::mobileMoney()->initiate(
+        phone: '256700000000',
+        amount: 15000,
+        currency: 'UGX',
+        // Shown to the payer on their handset, at most 100 characters.
+        // 'description' is accepted as an alias for it.
+        options: ['note' => 'Invoice INV-2026-001'],
+    );
+} catch (ValidationException $e) {
+    // Either the request was invalid, or the provider refused the payment:
+    // then the message says why, and $e->getData() is the transaction.
+} catch (ServiceUnavailableException $e) {
+    // Collections are not switched on for the gateway yet.
+}
+
+$reference = $tx['data']['reference']; // SignalBridge's — store it against your invoice
+$status    = $tx['data']['status'];    // 'pending': the payer still has to approve
 ```
 
-> Prefer webhooks over polling. Register a `callback_url` in `initiate()` or configure a webhook via `createWebhook()`.
+SignalBridge gives every transaction its own `reference`; passing one of your
+own in `options` throws `ValidationException`. Store the returned reference
+against your own record. `metadata` and `callback_url` are not part of the API
+and are not sent.
+
+### Check a Payment
+
+```php
+$result = SignalBridge::mobileMoney()->verify($reference);
+// $result['data']['status']:
+//   'pending' | 'processing' — the payer has not finished; ask again later
+//   'completed'              — paid
+//   'failed'                 — declined or timed out; $result['data']['status_message'] says why
+```
+
+Statuses only move forward, so once a transaction is `completed` or `failed`
+there is no need to ask again. A reference that is not one of your client's
+transactions is a 404.
 
 ### Disburse (Send Money) — not available yet
 
@@ -497,8 +513,7 @@ driver exists server-side, but sending money out is not switched on, so this
 method throws `ServiceUnavailableException` immediately rather than issuing a
 request that would 404 and look like a misconfigured `SIGNALBRIDGE_URL`.
 
-Collecting payments with `initiate()` works normally. Contact the SignalBridge
-team if you need payouts enabled.
+Contact the SignalBridge team if you need payouts enabled.
 
 ---
 
@@ -697,34 +712,28 @@ public function confirmOrder(Order $order): void
 }
 ```
 
-### Collect Payment and Listen via Webhook
+### Collect Payment for an Invoice
+
+There are no mobile money webhooks yet, so store the reference and ask until
+the payment settles — for example from a scheduled job:
 
 ```php
-// 1. Initiate collection
+// 1. Ask the customer to pay
 $tx = SignalBridge::mobileMoney()->initiate(
     phone: $invoice->customer_phone,
     amount: $invoice->total,
-    options: [
-        'reference'    => $invoice->number,
-        'callback_url' => route('webhooks.momo'),
-        'metadata'     => ['invoice_id' => $invoice->id],
-    ]
+    options: ['note' => 'Invoice '.$invoice->number],
 );
 
-// 2. Handle the provider callback (routes/api.php → POST /webhooks/momo)
-//    Note: this is the mobile money provider calling your callback_url. It is
-//    not a SignalBridge webhook, so it carries no X-SignalBridge-Signature —
-//    verify it per your provider's own scheme.
-public function handle(Request $request): \Illuminate\Http\Response
-{
-    $status = $request->input('status');   // 'completed' | 'failed'
-    $meta   = $request->input('metadata');
+$invoice->update(['payment_reference' => $tx['data']['reference']]);
 
-    if ($status === 'completed') {
-        Invoice::find($meta['invoice_id'])->markPaid();
-    }
+// 2. Later, for each invoice still waiting
+$status = SignalBridge::mobileMoney()->verify($invoice->payment_reference)['data']['status'];
 
-    return response()->noContent();
+if ($status === 'completed') {
+    $invoice->markPaid();
+} elseif ($status === 'failed') {
+    $invoice->markPaymentFailed();
 }
 ```
 
