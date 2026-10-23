@@ -4,6 +4,7 @@ namespace Nugsoft\SignalBridge\Facades;
 
 use Illuminate\Support\Facades\Facade;
 use Nugsoft\SignalBridge\Channels\MobileMoney\MobileMoneyClient;
+use Nugsoft\SignalBridge\Channels\Sandbox\SandboxClient;
 use Nugsoft\SignalBridge\Channels\Sms\SmsClient;
 use Nugsoft\SignalBridge\Channels\Ussd\UssdClient;
 use Nugsoft\SignalBridge\Channels\WhatsApp\WhatsAppClient;
@@ -18,6 +19,8 @@ use Nugsoft\SignalBridge\Exceptions\ValidationException;
  * @method static WhatsAppClient whatsapp()
  * @method static MobileMoneyClient mobileMoney()
  * @method static UssdClient ussd()
+ * @method static SandboxClient sandboxTools()
+ * @method static bool isSandbox()
  *
  * @method static array sendSms(string $recipient, string $message, array $options = [])
  * @method static array sendBatch(array $messages, array $options = [])

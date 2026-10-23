@@ -5,6 +5,17 @@ All notable changes to `signalbridge-laravel-sdk` will be documented in this fil
 ## [Unreleased]
 
 ### Added
+- **Sandbox.** `SIGNALBRIDGE_SANDBOX=true` points the client at the sandbox —
+  the same API with every provider simulated — and `SignalBridge::isSandbox()`
+  says which you have. `Support\MagicNumbers` names the numbers that drive a
+  message down each path. `SignalBridge::sandboxTools()` simulates a customer's
+  WhatsApp message (`customerMessage()`), moves a message to an outcome
+  (`setMessageStatus()`), adds test credit (`addCredit()`) and lists the
+  numbers (`magicNumbers()`). Called on live, the tools say they exist only in
+  the sandbox. A production app left pointing at the sandbox logs a warning at
+  boot. The Boost guideline teaches agents to build against the sandbox.
+
+### Added
 - **WhatsApp files, buttons and lists.** `whatsapp()->sendMedia()` sends an
   image, document, video, audio (a voice note) or sticker from a public https
   link, with a caption or file name where WhatsApp allows one.
