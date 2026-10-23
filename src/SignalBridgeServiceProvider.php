@@ -16,6 +16,11 @@ class SignalBridgeServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole() && empty(config('signalbridge.token'))) {
             $this->app->make('log')->warning('SignalBridge: SIGNALBRIDGE_TOKEN is not set. The SDK will throw on first use.');
         }
+
+        // A sandbox setting left on in production sends nothing anywhere: say so.
+        if ($this->app->isProduction() && str_starts_with((string) config('signalbridge.url'), rtrim(SignalBridgeClient::SANDBOX_URL, '/'))) {
+            $this->app->make('log')->warning('SignalBridge: this production app points at the SANDBOX, where no message reaches a real phone. Unset SIGNALBRIDGE_SANDBOX and use a live token.');
+        }
     }
 
     public function register(): void

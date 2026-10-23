@@ -6,6 +6,7 @@ use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Nugsoft\SignalBridge\Channels\MobileMoney\MobileMoneyClient;
+use Nugsoft\SignalBridge\Channels\Sandbox\SandboxClient;
 use Nugsoft\SignalBridge\Channels\Sms\SmsClient;
 use Nugsoft\SignalBridge\Channels\Ussd\UssdClient;
 use Nugsoft\SignalBridge\Channels\WhatsApp\WhatsAppClient;
@@ -31,6 +32,15 @@ class SignalBridgeClient implements SignalBridgeClientInterface
   private ?WhatsAppClient $whatsAppChannel = null;
   private ?MobileMoneyClient $mobileMoneyChannel = null;
   private ?UssdClient $ussdChannel = null;
+  private ?SandboxClient $sandboxChannel = null;
+
+  public const LIVE_URL = 'https://signal-bridge.nugsoftapps.net/api';
+
+  /**
+   * The sandbox: the same API with every provider simulated, for building and
+   * testing. Its accounts and tokens are separate from live ones.
+   */
+  public const SANDBOX_URL = 'https://sandbox.signal-bridge.nugsoftapps.net/api';
 
   public function __construct(?string $token = null, ?string $baseUrl = null, int $timeout = 30)
   {
@@ -77,6 +87,26 @@ class SignalBridgeClient implements SignalBridgeClientInterface
   public function mobileMoney(): MobileMoneyClient
   {
     return $this->mobileMoneyChannel ??= new MobileMoneyClient($this->baseUrl, $this->token, $this->timeout);
+  }
+
+  /**
+   * The sandbox's tools: simulate a customer's WhatsApp message, move a
+   * message to an outcome, add test credit. Only in the sandbox.
+   *
+   * @example SignalBridge::sandboxTools()->customerMessage('256700000001', ['text' => 'Thanks!'])
+   */
+  public function sandboxTools(): SandboxClient
+  {
+    return $this->sandboxChannel ??= new SandboxClient($this->baseUrl, $this->token, $this->timeout);
+  }
+
+  /**
+   * Whether this client talks to the sandbox, where nothing reaches a real
+   * phone or wallet.
+   */
+  public function isSandbox(): bool
+  {
+    return $this->baseUrl === rtrim(self::SANDBOX_URL, '/');
   }
 
   /**
