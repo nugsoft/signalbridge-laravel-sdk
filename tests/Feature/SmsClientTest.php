@@ -93,7 +93,7 @@ class SmsClientTest extends TestCase
         Http::fake();
 
         $this->expectException(ServiceUnavailableException::class);
-        $this->expectExceptionMessageMatches('/not available yet/');
+        $this->expectExceptionMessageMatches('/not made through the API/');
 
         $this->client()->mobileMoney()->disburse('256700000000', 5000);
     }

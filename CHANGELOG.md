@@ -2,6 +2,25 @@
 
 All notable changes to `signalbridge-laravel-sdk` will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- **Mobile money is live on the gateway.** `mobileMoney()->balance()` reads
+  your mobile money balance (`available` and `held`, per currency).
+- `initiate()` sends `metadata` (your own data, at most 20 keys), which the
+  gateway returns with the status and in the new `payment.completed` and
+  `payment.failed` webhooks. A completed payment carries `fee` and
+  `net_amount`.
+
+### Changed
+- `initiate()` refuses an amount below 500, the gateway's minimum, before
+  sending (it refused only zero or less). **Breaking** only for code that asked
+  for less, which the gateway refused anyway.
+- `disburse()` still throws `ServiceUnavailableException`, now saying that
+  payouts are asked for on the SignalBridge dashboard. It is deprecated.
+- README and agent guide: mobile money is no longer described as switched off,
+  and the `mobile-money:*` abilities can be granted.
+
 ### Changed
 - **Mobile money follows the gateway's transaction reference.** The gateway now
   gives every mobile money transaction its own `reference` and records it before

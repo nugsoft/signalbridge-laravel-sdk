@@ -82,7 +82,7 @@ class SignalBridgeClient implements SignalBridgeClientInterface
    * Access the Mobile Money channel client.
    *
    * @example SignalBridge::mobileMoney()->initiate('256700000000', 5000)
-   * @example SignalBridge::mobileMoney()->disburse('256700000000', 50000)
+   * @example SignalBridge::mobileMoney()->balance()
    */
   public function mobileMoney(): MobileMoneyClient
   {
@@ -344,7 +344,7 @@ class SignalBridgeClient implements SignalBridgeClientInterface
    * Create a new outbound webhook
    *
    * @param  string  $url  The URL SignalBridge will POST events to
-   * @param  array   $events  Event types to subscribe to (e.g. ['message.sent', 'message.delivered', 'message.failed', '*'])
+   * @param  array   $events  Event types to subscribe to (e.g. ['message.sent', 'message.delivered', 'message.failed', 'payment.completed', '*'])
    * @param  bool    $isActive  Whether the webhook is active immediately
    * @return array  Created webhook data including the one-time secret
    *

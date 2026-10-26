@@ -10,24 +10,38 @@ use Nugsoft\SignalBridge\Exceptions\ValidationException;
 class MobileMoneyClient extends BaseChannelClient
 {
   /**
+   * The smallest amount the gateway collects.
+   */
+  public const MINIMUM_AMOUNT = 500;
+
+  /**
+   * The most metadata keys the gateway keeps.
+   */
+  public const MAX_METADATA_KEYS = 20;
+
+  /**
    * Ask a payer to pay (request-to-pay).
    *
    * The payer gets a prompt on their phone, so the response is not the
    * outcome: its status is 'pending'. It carries SignalBridge's reference for
-   * the transaction in data.reference — store it and pass it to verify().
+   * the transaction in data.reference — store it and pass it to verify(), or
+   * wait for the payment.completed / payment.failed webhook. Once completed,
+   * the amount less Nugsoft's collection fee (data.fee) joins your mobile
+   * money balance (data.net_amount).
    *
    * @param  string  $phone     Payer's phone number, digits only (e.g. '256700000000' or '0700000000')
-   * @param  float   $amount    Amount to collect (must be > 0)
-   * @param  string  $currency  Currency code (default: 'UGX')
+   * @param  float   $amount    Amount to collect, at least 500
+   * @param  string  $currency  Currency code (default: 'UGX'); must be the gateway wallet's
    * @param  array   $options   Optional: note — shown to the payer, at most 100 characters
-   *                            ('description' is accepted as an alias)
+   *                            ('description' is accepted as an alias); metadata — your own
+   *                            data, at most 20 keys, returned with the status and in webhooks
    *
    * @example
    * $tx = SignalBridge::mobileMoney()->initiate(
    *     phone: '256700000000',
    *     amount: 5000,
    *     currency: 'UGX',
-   *     options: ['note' => 'Invoice INV-001'],
+   *     options: ['note' => 'Invoice INV-001', 'metadata' => ['tenant_id' => 'school-42']],
    * );
    * $reference = $tx['data']['reference'];
    *
@@ -41,8 +55,8 @@ class MobileMoneyClient extends BaseChannelClient
       throw new ValidationException('Phone number is required');
     }
 
-    if ($amount <= 0) {
-      throw new ValidationException('Amount must be greater than zero');
+    if ($amount < self::MINIMUM_AMOUNT) {
+      throw new ValidationException('Amount must be at least '.self::MINIMUM_AMOUNT);
     }
 
     // The gateway gives every transaction its own reference and ignores one
@@ -72,6 +86,18 @@ class MobileMoneyClient extends BaseChannelClient
       $payload['note'] = $note;
     }
 
+    if (array_key_exists('metadata', $options) && $options['metadata'] !== null) {
+      if (! is_array($options['metadata'])) {
+        throw new ValidationException('Metadata must be an array');
+      }
+
+      if (count($options['metadata']) > self::MAX_METADATA_KEYS) {
+        throw new ValidationException('Metadata can have at most '.self::MAX_METADATA_KEYS.' keys');
+      }
+
+      $payload['metadata'] = $options['metadata'];
+    }
+
     $response = $this->http()->post("{$this->baseUrl}/mobile-money/initiate", $payload);
 
     if ($response->failed()) {
@@ -84,9 +110,10 @@ class MobileMoneyClient extends BaseChannelClient
   /**
    * Ask what became of a transaction.
    *
-   * Statuses only move forward: 'pending', then possibly 'processing', then
-   * 'completed' or 'failed' ('cancelled', 'rejected' and 'rolled_back' exist
-   * for payouts). A 404 means no transaction of yours has that reference.
+   * Statuses only move forward: 'pending', then 'completed', or 'failed',
+   * 'cancelled' or 'rejected' — all three final. A completed payment carries
+   * data.fee and data.net_amount, and data.metadata is what you sent. A 404
+   * means no transaction of yours has that reference.
    *
    * @param  string  $reference  data.reference from initiate()
    */
@@ -97,6 +124,27 @@ class MobileMoneyClient extends BaseChannelClient
     }
 
     $response = $this->http()->get("{$this->baseUrl}/mobile-money/transactions/".rawurlencode($reference));
+
+    if ($response->failed()) {
+      $this->handleMobileMoneyError($response);
+    }
+
+    return $this->parseResponse($response);
+  }
+
+  /**
+   * Your mobile money balance: what your payers paid, less fees, not yet paid
+   * out to you. One entry per currency; 'available' can be paid out, 'held'
+   * is set aside for payouts still going through. Empty until a payment
+   * completes. Amounts are strings with two decimals.
+   *
+   * @example
+   * $balances = SignalBridge::mobileMoney()->balance()['data'];
+   * // [['currency' => 'UGX', 'available' => '148500.00', 'held' => '52200.00', 'updated_at' => '…']]
+   */
+  public function balance(): array
+  {
+    $response = $this->http()->get("{$this->baseUrl}/mobile-money/balance");
 
     if ($response->failed()) {
       $this->handleMobileMoneyError($response);
@@ -139,36 +187,26 @@ class MobileMoneyClient extends BaseChannelClient
   }
 
   /**
-   * Disburse (send) money to a mobile money wallet.
+   * Send money out to a mobile money wallet — not offered over the API.
    *
-   * @param  string  $phone     Recipient's phone number in E.164 format
-   * @param  float   $amount    Amount to disburse (must be > 0)
-   * @param  string  $currency  Currency code (default: 'UGX')
-   * @param  array   $options   Optional: note
+   * Collected money is paid out to you by Nugsoft, to the payout account your
+   * administrators save on the Balance page of the SignalBridge dashboard,
+   * where they also ask for payouts. Paying arbitrary numbers from your
+   * balance is not something the API does.
    *
-   * @example
-   * SignalBridge::mobileMoney()->disburse(
-   *     phone: '256700000000',
-   *     amount: 50000,
-   *     options: ['note' => 'Staff commission']
-   * );
+   * @deprecated Ask for payouts on the SignalBridge dashboard instead.
    *
-   * @note NOT YET AVAILABLE. The gateway exposes no disbursement endpoint, so
-   *       this always throws ServiceUnavailableException rather than pretending
-   *       to move money.
-   *
-   * @throws ServiceUnavailableException always, until the endpoint ships
+   * @throws ServiceUnavailableException always
    */
   public function disburse(string $phone, float $amount, string $currency = 'UGX', array $options = []): array
   {
-    // The gateway has no /mobile-money/disburse route. The driver behind it is
-    // written, but sending money out is not exposed over the API yet. Calling
-    // through would 404, which the error handler reports as a bad
-    // SIGNALBRIDGE_URL and sends you looking in the wrong place.
+    // There is no /mobile-money/disburse route. Calling through would 404,
+    // which the error handler reports as a bad SIGNALBRIDGE_URL and sends you
+    // looking in the wrong place.
     throw new ServiceUnavailableException(
-      'Mobile money disbursement is not available yet: the SignalBridge API does not expose '
-        .'/mobile-money/disburse. Use initiate() to collect payments. Contact the SignalBridge '
-        .'team if you need payouts enabled.'
+      'Payouts are not made through the API: your administrators ask for them on the Balance page '
+        .'of the SignalBridge dashboard, and Nugsoft pays your mobile money balance out to your '
+        .'payout account. Use initiate() to collect payments and balance() to read what you hold.'
     );
   }
 }
