@@ -182,8 +182,8 @@ gets `*` and reaches everything; a narrower one raises
 | `mcp:write` | Nothing in this SDK: with `mcp:read`, lets an agent's token set up tokens, webhooks, templates and Flows on the MCP server |
 
 Creating, changing and deleting templates and Flows also needs a client
-administrator. Mobile money abilities cannot be granted yet, so mobile money
-needs a full-access (`*`) token.
+administrator. `mobile-money:send` covers `mobileMoney()->initiate()`, and
+`mobile-money:read` covers `verify()` and `balance()`.
 
 ### Delivery status
 
@@ -264,12 +264,16 @@ $reference = $tx['data']['reference'];
 ```
 
 Mobile money reads `note` (the text shown to the payer, at most 100 characters)
-only. SignalBridge assigns the `reference`: passing your own throws. Store the
-returned `data.reference` and poll `mobileMoney()->verify($reference)` for the
-result; there are no mobile money webhooks yet. Until the gateway switches
-collections on, `initiate()` throws `ServiceUnavailableException` — do not
-treat that as a token or client problem. A payment the provider refused throws
-`ValidationException` whose `getData()` is the transaction.
+and `metadata` (your own, at most 20 keys, returned with the status and in
+webhooks). The amount is at least 500. SignalBridge assigns the `reference`:
+passing your own throws. Store the returned `data.reference`, and act on the
+`payment.completed` / `payment.failed` webhook (or `mobileMoney()->verify()`).
+Only `completed` means paid — never hand over goods on `pending`. A completed
+payment's `fee` and `net_amount` say what reached the client's mobile money
+balance, read with `mobileMoney()->balance()`. `initiate()` throws
+`ServiceUnavailableException` only if the gateway has collections switched
+off — do not treat that as a token or client problem. A payment the provider
+refused throws `ValidationException` whose `getData()` is the transaction.
 
 Start a conversation with an approved template. Free text
 (`whatsapp()->send()`) is delivered only within 24 hours of the customer's last
@@ -318,10 +322,9 @@ on the title text. A link button sends nothing back.
 
 ### Not available
 
-`mobileMoney()->disburse()` throws `ServiceUnavailableException`; the gateway
-exposes no payout endpoint. `ussd()` is likewise unreleased. Collecting with
-`mobileMoney()->initiate()` is built but switched off on the gateway for now, so
-it throws `ServiceUnavailableException` too.
+`mobileMoney()->disburse()` throws `ServiceUnavailableException`: payouts are
+asked for on the SignalBridge dashboard, never through the API, so do not build
+a payout flow on it. `ussd()` is likewise unreleased.
 
 ### Do not log message bodies or recipient numbers
 

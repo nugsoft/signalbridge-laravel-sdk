@@ -13,8 +13,7 @@ Send SMS, WhatsApp messages, and initiate Mobile Money transactions through a si
 |---|---|---|
 | **SMS** | ✅ Available | `send()`, `sendBatch()`, `status()`, `messages()`, `calculateSegments()`, `estimateCost()` |
 | **WhatsApp** | ✅ Available | `sendTemplate()`, `send()`, `sendMedia()`, `sendButtons()`, `sendList()`, `sendLinkButton()`, `sendFlow()`, templates, Flows, received messages |
-| **Mobile Money** | ⚠️ Not switched on yet on the gateway | `initiate()`, `verify()` |
-| **Mobile Money payouts** | 🔜 Planned | `disburse()` — the gateway exposes no disbursement endpoint yet |
+| **Mobile Money** | ✅ Available | `initiate()`, `verify()`, `balance()` — payouts are asked for on the dashboard |
 | **USSD** | 🔜 Planned | `push()`, `session()`, `respond()` |
 
 ## Features
@@ -114,12 +113,14 @@ existing tokens carry — so nothing needs changing unless you want to narrow on
 | `balance:request-credit` | asking administrators for a top-up |
 | `webhooks:read` / `webhooks:write` | reading / changing webhooks |
 | `export:read` | `exportMessages()`, `exportTransactions()` |
+| `mobile-money:send` | `mobileMoney()->initiate()` |
+| `mobile-money:read` | `mobileMoney()->verify()`, `mobileMoney()->balance()` |
 
 A call made with a token that lacks the ability throws
 `InsufficientPermissionsException`; the response names the missing ability.
 Listing and revoking your own tokens is always allowed.
 
-> `mobile-money:send` and `mobile-money:read` are not issuable at the moment: the mobile money channel is unreleased, so reaching it needs a full-access (`*`) token. The WhatsApp abilities are `whatsapp:send`, `whatsapp:templates`, `whatsapp:flows` and `whatsapp:read`.
+> The WhatsApp abilities are `whatsapp:send`, `whatsapp:templates`, `whatsapp:flows` and `whatsapp:read`.
 
 
 ---
@@ -504,11 +505,13 @@ Template and Flow events are not in a webhook's default subscription — add the
 
 ## Mobile Money
 
-### Collect a Payment (Request-to-Pay)
+Ask your customers to pay you by mobile money. The payer approves a prompt on
+their phone and pays the network's fee on top. Once the payment completes, the
+amount less Nugsoft's collection fee joins your **mobile money balance** — kept
+apart from your SMS balance — and Nugsoft pays it out to the payout account
+your administrators save on the Balance page of the dashboard.
 
-> **Not switched on yet.** Until the gateway turns on mobile money collections,
-> `initiate()` throws `ServiceUnavailableException` ("Mobile money collections
-> are not available yet."). The calls below are what to build against.
+### Collect a Payment (Request-to-Pay)
 
 ```php
 use Nugsoft\SignalBridge\Exceptions\ServiceUnavailableException;
@@ -517,17 +520,21 @@ use Nugsoft\SignalBridge\Exceptions\ValidationException;
 try {
     $tx = SignalBridge::mobileMoney()->initiate(
         phone: '256700000000',
-        amount: 15000,
-        currency: 'UGX',
-        // Shown to the payer on their handset, at most 100 characters.
-        // 'description' is accepted as an alias for it.
-        options: ['note' => 'Invoice INV-2026-001'],
+        amount: 15000,                 // at least 500
+        currency: 'UGX',               // the gateway wallet's currency
+        options: [
+            // Shown to the payer on their handset, at most 100 characters.
+            // 'description' is accepted as an alias for it.
+            'note' => 'Invoice INV-2026-001',
+            // Yours, at most 20 keys: returned with the status and in webhooks.
+            'metadata' => ['invoice_id' => 2026001, 'tenant_id' => 'school-42'],
+        ],
     );
 } catch (ValidationException $e) {
     // Either the request was invalid, or the provider refused the payment:
     // then the message says why, and $e->getData() is the transaction.
 } catch (ServiceUnavailableException $e) {
-    // Collections are not switched on for the gateway yet.
+    // Mobile money collections are switched off on the gateway.
 }
 
 $reference = $tx['data']['reference']; // SignalBridge's — store it against your invoice
@@ -535,37 +542,52 @@ $status    = $tx['data']['status'];    // 'pending': the payer still has to appr
 ```
 
 SignalBridge gives every transaction its own `reference`; passing one of your
-own in `options` throws `ValidationException`. Store the returned reference
-against your own record. `metadata` and `callback_url` are not part of the API
-and are not sent.
+own in `options` throws `ValidationException`. `callback_url` is not part of
+the API and is not sent — subscribe a webhook instead.
 
-### Check a Payment
+If your product resells to tenants of its own — schools buying SMS packages
+from a school system, say — put the tenant in `metadata`. The payment is yours
+and joins your mobile money balance; the webhook tells you whose package to
+credit.
+
+### Learn the Outcome
+
+Subscribe your webhook to `payment.completed` and `payment.failed` (they are
+not in the default subscription), or ask:
 
 ```php
 $result = SignalBridge::mobileMoney()->verify($reference);
 // $result['data']['status']:
-//   'pending' | 'processing' — the payer has not finished; ask again later
-//   'completed'              — paid
-//   'failed'                 — declined or timed out; $result['data']['status_message'] says why
+//   'pending'                          — the payer has not answered; ask again later
+//   'completed'                        — paid: 'fee' is Nugsoft's collection fee,
+//                                        'net_amount' what reached your balance
+//   'failed' | 'cancelled' | 'rejected' — not paid; 'status_message' says why
+// $result['data']['metadata'] is what you sent.
 ```
 
-Statuses only move forward, so once a transaction is `completed` or `failed`
-there is no need to ask again. A reference that is not one of your client's
-transactions is a 404.
+Statuses only move forward, and each webhook event is sent once, so once a
+transaction is `completed` or `failed` there is no need to ask again. A
+reference that is not one of your client's transactions is a 404. A completed
+payment whose `fee` and `net_amount` are `null` was reported with a different
+amount by the provider; Nugsoft checks and credits it.
 
-### Disburse (Send Money) — not available yet
+### Mobile Money Balance
 
 ```php
-SignalBridge::mobileMoney()->disburse('256700000000', 50000);
-// throws ServiceUnavailableException
+$balances = SignalBridge::mobileMoney()->balance()['data'];
+// [['currency' => 'UGX', 'available' => '148500.00', 'held' => '52200.00', 'updated_at' => '…']]
 ```
 
-The SignalBridge API does not expose a disbursement endpoint. The provider
-driver exists server-side, but sending money out is not switched on, so this
-method throws `ServiceUnavailableException` immediately rather than issuing a
-request that would 404 and look like a misconfigured `SIGNALBRIDGE_URL`.
+`available` is what can be paid out to you; `held` is set aside for payouts
+still going through. Amounts are strings: compare them as decimals.
 
-Contact the SignalBridge team if you need payouts enabled.
+### Payouts
+
+Payouts are not made through the API. Your client's administrators save a
+payout account (a mobile money number or a bank account) on the Balance page of
+the SignalBridge dashboard and ask for payouts there; Nugsoft approves each one.
+`mobileMoney()->disburse()` is kept so existing code does not break, but it
+throws `ServiceUnavailableException` saying so.
 
 ---
 

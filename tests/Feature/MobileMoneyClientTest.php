@@ -35,6 +35,9 @@ class MobileMoneyClientTest extends TestCase
                 'phone' => '256700000000',
                 'amount' => '5000.00',
                 'currency' => 'UGX',
+                'fee' => null,
+                'net_amount' => null,
+                'metadata' => null,
                 'created_at' => '2026-10-23T09:05:46+00:00',
                 'settled_at' => null,
                 ...$overrides,
@@ -49,8 +52,8 @@ class MobileMoneyClientTest extends TestCase
 
         $tx = $this->client()->mobileMoney()->initiate('256700000000', 5000.0, 'ugx', [
             'description' => 'Invoice payment',
-            // Neither of these exists in the API; they must not be sent.
-            'metadata' => ['order' => 1],
+            'metadata' => ['tenant_id' => 'school-42'],
+            // Not in the API; it must not be sent.
             'callback_url' => 'https://example.test/momo',
         ]);
 
@@ -64,6 +67,7 @@ class MobileMoneyClientTest extends TestCase
                     'amount' => 5000.0,
                     'currency' => 'UGX',
                     'note' => 'Invoice payment',
+                    'metadata' => ['tenant_id' => 'school-42'],
                 ];
         });
     }
@@ -107,13 +111,28 @@ class MobileMoneyClientTest extends TestCase
     }
 
     #[Test]
-    public function it_refuses_an_amount_of_zero(): void
+    public function it_refuses_an_amount_below_the_gateway_minimum(): void
+    {
+        Http::fake();
+
+        try {
+            $this->client()->mobileMoney()->initiate('256700000000', 499.0);
+            $this->fail('An amount below 500 was sent.');
+        } catch (ValidationException $e) {
+            $this->assertSame('Amount must be at least 500', $e->getMessage());
+        }
+
+        Http::assertNothingSent();
+    }
+
+    #[Test]
+    public function it_refuses_more_metadata_than_the_gateway_keeps(): void
     {
         Http::fake();
 
         $this->expectException(ValidationException::class);
 
-        $this->client()->mobileMoney()->initiate('256700000000', 0.0);
+        $this->client()->mobileMoney()->initiate('256700000000', 5000.0, 'UGX', ['metadata' => array_fill_keys(range(1, 21), 'x')]);
     }
 
     #[Test]
@@ -150,7 +169,7 @@ class MobileMoneyClientTest extends TestCase
         ], 422)]);
 
         try {
-            $this->client()->mobileMoney()->initiate('256700000000', 100.0);
+            $this->client()->mobileMoney()->initiate('256700000000', 5000.0);
             $this->fail('A refused payment did not throw.');
         } catch (ValidationException $e) {
             $this->assertSame('The payment request was refused: Amount must be at least 500', $e->getMessage());
@@ -174,12 +193,30 @@ class MobileMoneyClientTest extends TestCase
     }
 
     #[Test]
-    public function disbursement_reports_that_it_is_unavailable(): void
+    public function it_reads_the_mobile_money_balance(): void
+    {
+        Http::fake(['*' => Http::response(['success' => true, 'data' => [
+            ['currency' => 'UGX', 'available' => '148500.00', 'held' => '52200.00', 'updated_at' => '2026-10-26T11:02:13+03:00'],
+        ]])]);
+
+        $balances = $this->client()->mobileMoney()->balance()['data'];
+
+        $this->assertSame('148500.00', $balances[0]['available']);
+        Http::assertSent(fn ($request) => $request->method() === 'GET' && $request->url() === 'https://gateway.test/api/mobile-money/balance');
+    }
+
+    #[Test]
+    public function disbursement_points_to_payouts_on_the_dashboard(): void
     {
         Http::fake();
 
-        $this->expectException(ServiceUnavailableException::class);
+        try {
+            $this->client()->mobileMoney()->disburse('256700000000', 5000.0);
+            $this->fail('disburse() did not throw.');
+        } catch (ServiceUnavailableException $e) {
+            $this->assertStringContainsString('Balance page of the SignalBridge dashboard', $e->getMessage());
+        }
 
-        $this->client()->mobileMoney()->disburse('256700000000', 5000.0);
+        Http::assertNothingSent();
     }
 }
