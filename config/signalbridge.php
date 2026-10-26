@@ -13,7 +13,23 @@ return [
     |
     */
 
-  'url' => env('SIGNALBRIDGE_URL', 'https://signal-bridge.nugsoftapps.net/api'),
+  'url' => env('SIGNALBRIDGE_URL', env('SIGNALBRIDGE_SANDBOX', false)
+    ? 'https://sandbox.signal-bridge.nugsoftapps.net/api'
+    : 'https://signal-bridge.nugsoftapps.net/api'),
+
+  /*
+  |--------------------------------------------------------------------------
+  | Sandbox
+  |--------------------------------------------------------------------------
+  |
+  | true while building and testing: the client talks to the sandbox, where
+  | every provider is simulated and nothing reaches a real phone or wallet. It
+  | needs a sandbox token — sandbox accounts are separate from live ones.
+  | SIGNALBRIDGE_URL, when set, still wins.
+  |
+  */
+
+  'sandbox' => (bool) env('SIGNALBRIDGE_SANDBOX', false),
 
   /*
     |--------------------------------------------------------------------------

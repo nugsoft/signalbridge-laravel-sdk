@@ -113,9 +113,25 @@ run in CI.
 Http::fake(['*' => Http::response(['success' => true, 'data' => ['message_id' => 1]])]);
 ```
 
-There is no test mode. `is_test => true` only labels a message — it is still
-delivered and charged. For a manual check against the real gateway, use a number
-you control.
+`is_test => true` only labels a message — it is still delivered and charged.
+
+### Build against the sandbox
+
+For development and manual testing, use the sandbox, where every provider is
+simulated and nothing reaches a real phone: `SIGNALBRIDGE_SANDBOX=true` with a
+sandbox token (an account at https://sandbox.signal-bridge.nugsoftapps.net/register;
+live tokens do not work there, nor sandbox tokens on live).
+
+- Drive each path with `Nugsoft\SignalBridge\Support\MagicNumbers`
+  (`DELIVERED`, `FAILED`, `NO_REPORT`, `REJECTED`, `SLOW`, `READ`,
+  `OUTSIDE_WINDOW`) rather than real numbers.
+- Simulate what a customer would do with
+  `SignalBridge::sandboxTools()->customerMessage()`, and an outcome with
+  `setMessageStatus()`.
+- Keep `SIGNALBRIDGE_SANDBOX` out of production `.env`. Switching to live is a
+  configuration change, never a code change.
+- Automated tests still use `Http::fake()`: they must not depend on the sandbox
+  being reachable either.
 
 ### Never calculate cost yourself
 
@@ -202,6 +218,9 @@ Valid events are `message.sent`, `message.delivered`, `message.read`
 and `flow.completed` (what WhatsApp customers send), `template.approved`,
 `template.rejected`, `template.paused`, `template.disabled`, and `*` for all of
 them. Anything else is rejected with a 422. The signing secret is returned once, when the webhook is created.
+
+A read WhatsApp message keeps the status `delivered`; `read` is not a status.
+Check `read_at` (null until opened) or listen for `message.read`.
 
 Update your records by `message_id` from whichever event arrives; never rely on
 their order:
