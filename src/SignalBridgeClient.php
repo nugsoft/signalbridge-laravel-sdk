@@ -234,25 +234,53 @@ class SignalBridgeClient implements SignalBridgeClientInterface
   }
 
   /**
-   * Get current balance for a currency
+   * The balances a channel can spend. SMS and WhatsApp have a balance each,
+   * topped up separately.
+   */
+  public const BALANCE_CHANNELS = ['sms', 'whatsapp'];
+
+  /**
+   * Get one balance for a currency: SMS unless $channel is 'whatsapp'
    *
    * @param  string  $currency  Currency code (default: UGX)
+   * @param  string|null  $channel  'sms' or 'whatsapp'; the gateway reads SMS when left out
    * @return array Balance details
    *
+   * @throws ValidationException for a channel that has no balance
    * @throws UnauthorizedException
    * @throws SignalBridgeException
    */
-  public function getBalance(string $currency = 'UGX'): array
+  public function getBalance(string $currency = 'UGX', ?string $channel = null): array
   {
+    $query = ['currency' => $currency];
+
+    if ($channel !== null) {
+      $query['channel'] = $this->balanceChannel($channel);
+    }
+
     $response = Http::withToken($this->token)
       ->timeout($this->timeout)
-      ->get("{$this->baseUrl}/balance", ['currency' => $currency]);
+      ->get("{$this->baseUrl}/balance", $query);
 
     if ($response->failed()) {
       $this->handleError($response);
     }
 
     return $this->parseResponse($response);
+  }
+
+  /**
+   * @throws ValidationException
+   */
+  protected function balanceChannel(string $channel): string
+  {
+    $channel = strtolower($channel);
+
+    if (! in_array($channel, self::BALANCE_CHANNELS, true)) {
+      throw new ValidationException('The balance channel must be one of: '.implode(', ', self::BALANCE_CHANNELS));
+    }
+
+    return $channel;
   }
 
   /**
@@ -279,14 +307,19 @@ class SignalBridgeClient implements SignalBridgeClientInterface
   /**
    * Get transaction history
    *
-   * @param  array  $filters  Filter options (per_page, page, type, start_date, end_date)
+   * @param  array  $filters  Filter options (per_page, page, type, channel — sms or whatsapp, start_date, end_date)
    * @return array Paginated transactions
    *
+   * @throws ValidationException for a channel that has no balance
    * @throws UnauthorizedException
    * @throws SignalBridgeException
    */
   public function getTransactions(array $filters = []): array
   {
+    if (isset($filters['channel'])) {
+      $filters['channel'] = $this->balanceChannel((string) $filters['channel']);
+    }
+
     $response = Http::withToken($this->token)
       ->timeout($this->timeout)
       ->get("{$this->baseUrl}/balance/transactions", $filters);

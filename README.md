@@ -597,11 +597,19 @@ These methods are on the main `SignalBridgeClient` and apply across all channels
 
 ### Balance
 
+SMS and WhatsApp have a balance each, topped up separately: an SMS spends only
+the SMS balance, a WhatsApp message only the WhatsApp one. `getBalance()` reads
+the SMS balance unless you ask for `'whatsapp'`.
+
 ```php
 $balance = SignalBridge::getBalance('UGX');
-// ['balance' => 996.0, 'currency' => 'UGX', 'segment_price' => 1.0, ...]
+// ['data' => ['channel' => 'sms', 'balance' => '996.0000', 'segment_price' => '1.0000', ...]]
 
-$summary = SignalBridge::getBalanceSummary();
+$whatsApp = SignalBridge::getBalance('UGX', 'whatsapp');
+// ['data' => ['channel' => 'whatsapp', 'whatsapp_prices' => ['marketing' => 120, 'utility' => 60, ...], ...]]
+// A price of null means that category cannot be sent yet.
+
+$summary = SignalBridge::getBalanceSummary();   // both balances, each with its channel
 ```
 
 ### Transaction History
@@ -609,6 +617,7 @@ $summary = SignalBridge::getBalanceSummary();
 ```php
 $transactions = SignalBridge::getTransactions([
     'type'       => 'debit',        // 'credit' | 'debit'
+    'channel'    => 'whatsapp',     // 'sms' | 'whatsapp'; both when left out
     'start_date' => '2026-01-01',
     'end_date'   => '2026-04-30',
     'per_page'   => 50,
