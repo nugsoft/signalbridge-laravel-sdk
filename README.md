@@ -124,6 +124,54 @@ Listing and revoking your own tokens is always allowed.
 
 ---
 
+## Sandbox
+
+Build and test against the **sandbox**: the same API with every provider
+simulated. Nothing reaches a real phone or wallet, and the credit is free. Sign
+up at https://sandbox.signal-bridge.nugsoftapps.net/register and create a token
+there — sandbox accounts and tokens are separate from live ones.
+
+```env
+SIGNALBRIDGE_SANDBOX=true
+SIGNALBRIDGE_TOKEN=your-sandbox-token
+```
+
+```php
+use Nugsoft\SignalBridge\Facades\SignalBridge;
+use Nugsoft\SignalBridge\Support\MagicNumbers;
+
+SignalBridge::isSandbox();   // true
+
+// Magic numbers drive a message down each path your code handles
+SignalBridge::sms()->send(MagicNumbers::DELIVERED, 'Hello');      // delivered within seconds
+SignalBridge::sms()->send(MagicNumbers::FAILED, 'Hello');         // accepted, then failed
+SignalBridge::whatsapp()->send(MagicNumbers::OUTSIDE_WINDOW, 'Hi'); // fails: outside the 24-hour window
+
+// The sandbox's tools
+$tools = SignalBridge::sandboxTools();
+$tools->customerMessage(MagicNumbers::DELIVERED, ['text' => 'Thanks!']);   // a customer's WhatsApp reply
+$tools->customerMessage(MagicNumbers::DELIVERED, [                          // a tap on your buttons
+    'type' => 'interactive', 'reply_to_message_id' => $messageId, 'reply_id' => 'confirm_4821',
+]);
+$tools->setMessageStatus($messageId, 'delivered');   // or failed, or read (WhatsApp)
+$tools->addCredit();                                 // more test credit
+$tools->magicNumbers();                              // every number and what it does
+```
+
+| `MagicNumbers::` | Does |
+|---|---|
+| `DELIVERED` | Delivered within seconds — as is any number not listed |
+| `FAILED` | Accepted, then failed (WhatsApp refunds it; an SMS is not refunded, as on live) |
+| `NO_REPORT` | Stays `sent`: no outcome ever comes |
+| `REJECTED` | Refused by every provider: `permanently_failed` and refunded |
+| `SLOW` | Delivered after a minute |
+| `READ` | WhatsApp: delivered, then read |
+| `OUTSIDE_WINDOW` | WhatsApp: anything but a template fails (Meta 131047) and is refunded |
+
+Webhooks are real in the sandbox: point one at your endpoint to receive signed
+events. To go live, remove `SIGNALBRIDGE_SANDBOX` and use a live token. A
+production app left pointing at the sandbox logs a warning at boot.
+
 ## Usage
 
 ### Quick Start
@@ -205,6 +253,7 @@ $sms = SignalBridge::sms();
 $result = $sms->status(1234);
 $result['data']['status'];        // 'queued' | 'sent' | 'delivered' | 'failed' | 'permanently_failed'
 $result['data']['delivered_at'];  // ISO-8601, or null
+$result['data']['read_at'];       // WhatsApp: when it was opened (ISO-8601), or null
 $result['data']['error_message']; // why it failed, when it did
 
 // Ask the vendor live rather than reading the stored status.
@@ -222,6 +271,9 @@ $sms->status(1234, refresh: true);
 | `permanently_failed` | Every retry exhausted — **your balance was refunded** |
 
 Only `delivered`, `failed` and `permanently_failed` are final.
+
+A WhatsApp message that was opened stays `delivered` — `read` is not a status.
+`read_at` says when, and the `message.read` webhook tells you as it happens.
 
 #### Checking a whole batch
 
@@ -839,7 +891,8 @@ $phones->chunk(100)->each(function ($chunk) use ($message) {
 ```php
 // config/signalbridge.php
 return [
-    'url'               => env('SIGNALBRIDGE_URL', 'https://signal-bridge.nugsoftapps.net/api'),
+    'url'               => env('SIGNALBRIDGE_URL', /* the sandbox when SIGNALBRIDGE_SANDBOX=true, otherwise live */),
+    'sandbox'           => env('SIGNALBRIDGE_SANDBOX', false),
     'token'             => env('SIGNALBRIDGE_TOKEN'),
     'timeout'           => env('SIGNALBRIDGE_TIMEOUT', 30),
     'logging'           => env('SIGNALBRIDGE_LOGGING', true),
@@ -849,7 +902,8 @@ return [
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `SIGNALBRIDGE_TOKEN` | ✅ | — | API authentication token |
-| `SIGNALBRIDGE_URL` | ❌ | Production URL | API base URL |
+| `SIGNALBRIDGE_URL` | ❌ | Live URL, or the sandbox's | API base URL. Wins over `SIGNALBRIDGE_SANDBOX` |
+| `SIGNALBRIDGE_SANDBOX` | ❌ | `false` | `true` to use the sandbox, with a sandbox token |
 | `SIGNALBRIDGE_TIMEOUT` | ❌ | `30` | HTTP request timeout (seconds) |
 | `SIGNALBRIDGE_SENDER_ID` | ❌ | — | **Deprecated, has no effect.** The gateway sends every message as `NUGSOFT` |
 | `SIGNALBRIDGE_LOGGING` | ❌ | `true` | Log API errors to Laravel log |

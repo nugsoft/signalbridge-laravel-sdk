@@ -2,8 +2,6 @@
 
 All notable changes to `signalbridge-laravel-sdk` will be documented in this file.
 
-## [Unreleased]
-
 ### Changed
 - **Mobile money follows the gateway's transaction reference.** The gateway now
   gives every mobile money transaction its own `reference` and records it before
@@ -26,6 +24,20 @@ All notable changes to `signalbridge-laravel-sdk` will be documented in this fil
 - README: the "Collect Payment and Listen via Webhook" example used a
   `callback_url` the API never read. It now stores the reference and polls
   `verify()`.
+### Documentation
+- The status examples show `read_at`: a WhatsApp message that was opened
+  stays `delivered`, and `read_at` says when.
+
+### Added
+- **Sandbox.** `SIGNALBRIDGE_SANDBOX=true` points the client at the sandbox —
+  the same API with every provider simulated — and `SignalBridge::isSandbox()`
+  says which you have. `Support\MagicNumbers` names the numbers that drive a
+  message down each path. `SignalBridge::sandboxTools()` simulates a customer's
+  WhatsApp message (`customerMessage()`), moves a message to an outcome
+  (`setMessageStatus()`), adds test credit (`addCredit()`) and lists the
+  numbers (`magicNumbers()`). Called on live, the tools say they exist only in
+  the sandbox. A production app left pointing at the sandbox logs a warning at
+  boot. The Boost guideline teaches agents to build against the sandbox.
 
 ### Added
 - **WhatsApp files, buttons and lists.** `whatsapp()->sendMedia()` sends an
