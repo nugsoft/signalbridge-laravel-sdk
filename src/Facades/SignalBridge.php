@@ -24,7 +24,7 @@ use Nugsoft\SignalBridge\Exceptions\ValidationException;
  *
  * @method static array sendSms(string $recipient, string $message, array $options = [])
  * @method static array sendBatch(array $messages, array $options = [])
- * @method static array getBalance(string $currency = 'UGX')
+ * @method static array getBalance(string $currency = 'UGX', ?string $channel = null)
  * @method static array getBalanceSummary()
  * @method static array getTransactions(array $filters = [])
  * @method static array getTokens()

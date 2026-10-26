@@ -253,6 +253,12 @@ $balance['available_balance'];   // balance + credit limit
 $balance['segment_price'];       // pass to estimateCost()
 ```
 
+SMS and WhatsApp have a balance each, topped up separately, and each channel
+spends only its own: check `getBalance('UGX', 'whatsapp')` before WhatsApp
+sends, not the SMS balance. A `null` in its `whatsapp_prices` means that
+category cannot be sent yet (the gateway answers 503). `getTransactions()`
+filters by `channel`.
+
 Clients cannot credit themselves. Top-ups are an administrator action.
 
 ### WhatsApp and mobile money
