@@ -2,8 +2,28 @@
 
 All notable changes to `signalbridge-laravel-sdk` will be documented in this file.
 
-## [Unreleased]
+### Changed
+- **Mobile money follows the gateway's transaction reference.** The gateway now
+  gives every mobile money transaction its own `reference` and records it before
+  the provider is called. `initiate()` returns it in `data.reference` (there is
+  no `data.transaction_id`), and `verify()` takes it. Passing `reference` in
+  `initiate()`'s options now throws `ValidationException` instead of being sent
+  and ignored, and a `note` over 100 characters is refused before sending.
+  **Breaking** for code that passed its own reference or read
+  `transaction_id`; mobile money has never been switched on, so no live
+  integration depends on either.
+- **Collections switched off are reported as such.** While the gateway has
+  mobile money collections switched off it answers 403 "Mobile money
+  collections are not available yet."; `initiate()` now throws
+  `ServiceUnavailableException` for it, where it threw `NoClientException`.
+- **A refused payment says why.** A payment the provider refused throws
+  `ValidationException` with the provider's reason in the message, and
+  `getData()` returns the transaction, reference included.
 
+### Fixed
+- README: the "Collect Payment and Listen via Webhook" example used a
+  `callback_url` the API never read. It now stores the reference and polls
+  `verify()`.
 ### Documentation
 - The status examples show `read_at`: a WhatsApp message that was opened
   stays `delivered`, and `read_at` says when.
