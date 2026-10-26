@@ -4,6 +4,8 @@ All notable changes to `signalbridge-laravel-sdk` will be documented in this fil
 
 ## [Unreleased]
 
+## [4.1.0] - 2026-10-26
+
 ### Added
 - **SMS and WhatsApp have separate balances on the gateway.** `getBalance()`
   takes a channel — `getBalance('UGX', 'whatsapp')` reads the WhatsApp
